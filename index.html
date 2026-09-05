@@ -457,6 +457,19 @@
     video.duration einen größeren Wert meldet). Die Analyse
     bricht dann sauber ab, statt denselben Frame endlos erneut
     zu analysieren.
+  - Zusätzliche inhaltsbasierte Endeerkennung: Bei manchen
+    Dateien meldet der Browser eine falsche video.duration UND
+    video.currentTime bewegt sich beim Seek trotzdem weiter,
+    obwohl gar kein echter Frame mehr dekodiert werden kann.
+    Das äußert sich als schwarzer, eingefrorener Frame ohne
+    jede Veränderung zum vorherigen Frame. Wird das erkannt
+    (mehrere Frames hintereinander schwarz UND unverändert),
+    gilt das echte Ende als erreicht; die betroffenen Frames
+    werden aus dem Ergebnis entfernt.
+  - Die tatsächlich nutzbare Videolänge wird zusätzlich über
+    video.seekable ermittelt, falls verfügbar. Das liefert bei
+    manchen fehlerhaften Dateien von vornherein einen
+    genaueren Wert als video.duration.
   - SAMPLE_FPS von 30 auf 10 reduziert (siehe Kommentar unten).
   - Kontrast/Bewegung/Schnitt werden in einem gemeinsamen
     Pixel-Durchlauf berechnet statt in drei getrennten.
@@ -533,6 +546,36 @@ const SEEK_TIMEOUT_MS = 3000;
   als "am Ende angekommen" gewertet wird.
 */
 const STUCK_SAMPLES_LIMIT = 2;
+
+
+/*
+  Inhaltsbasierte Endeerkennung.
+
+  Manche Videodateien haben eine video.duration, die länger
+  ist als der tatsächlich dekodierbare Inhalt. In diesem Fall
+  bewegt sich video.currentTime beim Seek zwar trotzdem weiter
+  (die STUCK-Erkennung oben greift also nicht), es wird aber
+  kein echter Frame mehr geliefert - stattdessen ein schwarzer,
+  unveränderter Frame.
+
+  Ein Frame gilt als "leer", wenn er nahezu schwarz ist UND
+  sich praktisch nicht vom vorherigen Frame unterscheidet.
+  Tritt das mehrfach hintereinander auf, ist das echte Ende
+  erreicht.
+*/
+
+// Mittlere Luminanz (0-255), unterhalb derer ein Frame als
+// "nahezu schwarz" gilt.
+const BLANK_LUMINANCE_THRESHOLD = 10;
+
+// Mittlere Pixeldifferenz zum vorherigen Frame, unterhalb
+// derer ein Frame als "unverändert" gilt.
+const BLANK_DIFF_THRESHOLD = 2;
+
+// Anzahl aufeinanderfolgender "leerer" Frames, bevor die
+// Analyse abgebrochen und der betroffene Bereich verworfen
+// wird.
+const BLANK_STREAK_LIMIT = 5;
 
 
 /*
@@ -757,13 +800,58 @@ analyzeBtn.addEventListener("click", async () => {
 
 /*
   ------------------------------------------------------------
+  Tatsächlich nutzbare Videolänge ermitteln
+  ------------------------------------------------------------
+
+  video.duration ist bei manchen Dateien (z. B. bestimmte
+  Screen-Recordings oder Dateien mit variabler Framerate)
+  ungenau. video.seekable liefert die Zeitbereiche, die der
+  Browser tatsächlich ansteuern kann, und ist damit oft
+  verlässlicher. Ist ein kleinerer seekable-Endwert vorhanden,
+  wird dieser statt video.duration verwendet.
+  ------------------------------------------------------------
+*/
+
+function getEffectiveDuration() {
+
+  let effectiveDuration = video.duration;
+
+  try {
+
+    if (video.seekable && video.seekable.length > 0) {
+
+      const seekableEnd =
+        video.seekable.end(video.seekable.length - 1);
+
+      if (
+        isFinite(seekableEnd) &&
+        seekableEnd > 0 &&
+        seekableEnd < effectiveDuration
+      ) {
+
+        effectiveDuration = seekableEnd;
+      }
+    }
+
+  } catch (error) {
+
+    // video.seekable war nicht auswertbar - video.duration
+    // als Fallback beibehalten.
+  }
+
+  return effectiveDuration;
+}
+
+
+/*
+  ------------------------------------------------------------
   Videoanalyse
   ------------------------------------------------------------
 */
 
 async function analyzeVideo() {
 
-  const duration = video.duration;
+  const duration = getEffectiveDuration();
 
   /*
     Wir wählen die Anzahl der Samples anhand
@@ -783,6 +871,7 @@ async function analyzeVideo() {
 
   let lastActualTime = -1;
   let stuckCount = 0;
+  let blankStreak = 0;
 
 
   for (let i = 0; i < totalSamples; i++) {
@@ -880,6 +969,31 @@ async function analyzeVideo() {
 
 
     /*
+      Inhaltsbasierte Endeerkennung.
+
+      Ein Frame gilt als "leer", wenn er nahezu schwarz ist
+      und sich praktisch nicht vom vorherigen Frame
+      unterscheidet. previousFrame ist beim allerersten Frame
+      noch null - in dem Fall wird nicht gewertet, da noch
+      kein Vergleich möglich ist.
+    */
+
+    const isBlankFrame =
+      previousFrame !== null &&
+      frame.meanLuminance < BLANK_LUMINANCE_THRESHOLD &&
+      frame.pixelDiff < BLANK_DIFF_THRESHOLD;
+
+    if (isBlankFrame) {
+
+      blankStreak++;
+
+    } else {
+
+      blankStreak = 0;
+    }
+
+
+    /*
       Aktuelles Frame für den nächsten Vergleich speichern.
 
       Statt jedes Mal ein neues Array zu allozieren, wird
@@ -891,6 +1005,26 @@ async function analyzeVideo() {
     buffer.set(imageData.data);
     previousFrame = buffer;
     nextBufferIndex = 1 - nextBufferIndex;
+
+
+    if (blankStreak >= BLANK_STREAK_LIMIT) {
+
+      /*
+        Die letzten blankStreak Frames waren schwarz und
+        unverändert - das ist kein echter Videoinhalt,
+        sondern das Resultat eines Seeks über das
+        tatsächliche Ende hinaus. Diese Frames werden aus
+        dem Ergebnis entfernt, bevor die Analyse beendet
+        wird.
+      */
+
+      results.splice(
+        results.length - blankStreak,
+        blankStreak
+      );
+
+      break;
+    }
 
 
     /*
@@ -1155,7 +1289,9 @@ function analyzeFrame(data, previousData) {
     return {
       contrast,
       motion: 0,
-      cutScore: 0
+      cutScore: 0,
+      meanLuminance: mean,
+      pixelDiff: 0
     };
   }
 
@@ -1202,7 +1338,9 @@ function analyzeFrame(data, previousData) {
   return {
     contrast,
     motion,
-    cutScore
+    cutScore,
+    meanLuminance: mean,
+    pixelDiff: averageCutDifference
   };
 }
 
