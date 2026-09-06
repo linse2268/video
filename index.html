@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>Videoanalyse</title>
+  <title>Neue Videoanalyse</title>
   <link rel="icon" type="image/city" href="/images/city.png">
 
   <style>
@@ -210,16 +210,6 @@
         overflow-wrap: anywhere;
     }
 
-    .metric-raw {
-        margin-top: 4px;
-
-        color: #777;
-        font-size: 12px;
-        line-height: 1.4;
-
-        overflow-wrap: anywhere;
-    }
-
 
     /* =========================
        Chart
@@ -352,6 +342,138 @@
 
 
     /* =========================
+       Formularfelder (Serie, FPS)
+       ========================= */
+
+    .field {
+        display: block;
+        margin-bottom: 14px;
+    }
+
+    .field-label {
+        display: block;
+        margin-bottom: 6px;
+
+        color: #aaa;
+        font-size: 13px;
+    }
+
+    input[type="text"],
+    select {
+        width: 100%;
+        padding: 12px 14px;
+
+        border: 1px solid #333;
+        border-radius: 10px;
+
+        background: #181818;
+        color: #fff;
+
+        font: inherit;
+        font-size: 15px;
+    }
+
+    input[type="text"]::placeholder {
+        color: #666;
+    }
+
+    input[type="text"]:focus,
+    select:focus {
+        outline: none;
+        border-color: #777;
+    }
+
+    select:disabled,
+    input[type="text"]:disabled {
+        opacity: 0.5;
+    }
+
+
+    /* =========================
+       Metrik-Rohwert
+       ========================= */
+
+    .metric-raw {
+        margin-top: 4px;
+
+        color: #777;
+        font-size: 12px;
+        line-height: 1.4;
+
+        overflow-wrap: anywhere;
+    }
+
+
+    /* =========================
+       Zoom-Chart (synchron mit Video)
+       ========================= */
+
+    .zoom-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+
+        margin-bottom: 10px;
+    }
+
+    .zoom-toolbar button {
+        flex: 0 0 auto;
+        padding: 8px 14px;
+        font-size: 13px;
+    }
+
+    .zoom-range-label {
+        margin-left: auto;
+
+        color: #888;
+        font-size: 12px;
+    }
+
+    canvas.chart.zoomable {
+        cursor: grab;
+        touch-action: none;
+    }
+
+    canvas.chart.zoomable:active {
+        cursor: grabbing;
+    }
+
+
+    /* =========================
+       Vergleich mehrerer Videos
+       ========================= */
+
+    .comparison {
+        width: 100%;
+        margin-top: 16px;
+        padding: 16px;
+
+        background: #181818;
+        border-radius: 14px;
+    }
+
+    .comparison-controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+
+        margin-top: 10px;
+    }
+
+    .comparison-controls button {
+        flex: 0 0 auto;
+        padding: 10px 16px;
+        font-size: 14px;
+    }
+
+    .comparison-count {
+        color: #aaa;
+        font-size: 13px;
+    }
+
+
+    /* =========================
        Info
        ========================= */
 
@@ -435,9 +557,21 @@
 
 <div class="app">
 
-  <h1>Videoanalyse</h1>
+  <h1>Neue Videoanalyse</h1>
   <div class="subtitle">
     Farbkontrast · Bewegung · Schnitte
+  </div>
+
+  <div class="field">
+    <label class="field-label" for="seriesNameInput">
+      Serie / Bezeichnung (für Dateinamen &amp; Vergleich)
+    </label>
+    <input
+      type="text"
+      id="seriesNameInput"
+      placeholder="z. B. Werbespot A"
+      autocomplete="off"
+    >
   </div>
 
   <label class="upload">
@@ -449,7 +583,18 @@
     <input id="fileInput" type="file" accept="video/*">
   </label>
 
-  <video id="video" playsinline preload="metadata"></video>
+  <video id="video" playsinline controls preload="metadata"></video>
+
+  <div class="field">
+    <label class="field-label" for="fpsSelect">
+      Sample-Rate (Analyse-FPS)
+    </label>
+    <select id="fpsSelect">
+      <option value="10" selected>10 FPS</option>
+      <option value="20">20 FPS</option>
+      <option value="30">30 FPS</option>
+    </select>
+  </div>
 
   <div class="controls">
     <button id="analyzeBtn" disabled>
@@ -506,13 +651,19 @@
   </div>
 
   <div class="chart-container">
+    <div class="zoom-toolbar">
+      <button id="zoomInBtn" disabled>+ Zoom</button>
+      <button id="zoomOutBtn" disabled>− Zoom</button>
+      <button id="zoomResetBtn" disabled>Ganzes Video</button>
+      <span class="zoom-range-label" id="zoomRangeLabel">Ansicht: –</span>
+    </div>
     <div class="chart-body">
       <div class="chart-y-axis" aria-hidden="true">
         <span>100%</span>
         <span>50%</span>
         <span>0%</span>
       </div>
-      <canvas id="chart" class="chart"></canvas>
+      <canvas id="chart" class="chart zoomable"></canvas>
     </div>
     <div class="chart-legend">
       <span class="legend-item">
@@ -528,12 +679,37 @@
         Schnitt
       </span>
     </div>
+    <div class="info" style="margin-top:10px;">
+      Ziehen zum Verschieben, Mausrad/Buttons zum Zoomen, Klick springt im Video an diese Stelle.
+      Während der Wiedergabe folgt die Ansicht automatisch der Abspielposition (weiße Linie).
+    </div>
   </div>
 
   <div class="cuts">
     <strong>Erkannte Schnitte</strong>
     <div class="cut-list" id="cutList">
       <span style="color:#777">Noch keine Analyse.</span>
+    </div>
+  </div>
+
+  <div class="comparison">
+    <strong>Vergleich mehrerer Videos</strong>
+    <div class="info" style="margin-top:6px;">
+      Wird im lokalen Speicher deines Browsers abgelegt (bleibt auch nach
+      Neuladen erhalten, funktioniert am zuverlässigsten wenn du diese
+      Datei heruntergeladen und direkt im Browser geöffnet hast).
+    </div>
+    <div class="comparison-count" id="comparisonCount">0 Videos gespeichert</div>
+    <div class="comparison-controls">
+      <button id="addToComparisonBtn" disabled>
+        Zur Vergleichsliste hinzufügen
+      </button>
+      <button id="exportComparisonBtn" disabled>
+        CSV: Vergleich exportieren
+      </button>
+      <button id="clearComparisonBtn" disabled>
+        Vergleichsliste leeren
+      </button>
     </div>
   </div>
 
@@ -612,6 +788,9 @@ const clearBtn = document.getElementById("clearBtn");
 const exportFramesBtn = document.getElementById("exportFramesBtn");
 const exportSummaryBtn = document.getElementById("exportSummaryBtn");
 
+const seriesNameInput = document.getElementById("seriesNameInput");
+const fpsSelect = document.getElementById("fpsSelect");
+
 const statusEl = document.getElementById("status");
 const progressBar = document.getElementById("progressBar");
 
@@ -626,6 +805,16 @@ const cutListEl = document.getElementById("cutList");
 
 const chart = document.getElementById("chart");
 const chartCtx = chart.getContext("2d");
+
+const zoomInBtn = document.getElementById("zoomInBtn");
+const zoomOutBtn = document.getElementById("zoomOutBtn");
+const zoomResetBtn = document.getElementById("zoomResetBtn");
+const zoomRangeLabelEl = document.getElementById("zoomRangeLabel");
+
+const comparisonCountEl = document.getElementById("comparisonCount");
+const addToComparisonBtn = document.getElementById("addToComparisonBtn");
+const exportComparisonBtn = document.getElementById("exportComparisonBtn");
+const clearComparisonBtn = document.getElementById("clearComparisonBtn");
 
 
 /*
@@ -651,43 +840,26 @@ const ANALYSIS_HEIGHT = 90;
   Wert (z. B. 30) vervielfacht die Anzahl der Seeks, ohne dass
   Kontrast/Bewegung/Schnitte spürbar genauer erkannt werden.
 */
-const SAMPLE_FPS = 30;
+let SAMPLE_FPS = 10;
 
 
 /*
   Zeitnormalisierung für die Bewegungsanalyse.
 
   Die rohe Helligkeitsdifferenz zwischen zwei Samples hängt stark
-  vom zeitlichen Abstand zwischen den Samples ab: Bei hoher
-  SAMPLE_FPS liegen die Samples näher beieinander, wodurch bei
-  gleicher tatsächlicher Bewegung im Video eine kleinere Differenz
-  gemessen wird als bei niedriger SAMPLE_FPS.
-
-  Damit der Motion-Wert unabhängig von SAMPLE_FPS vergleichbar
-  bleibt, wird die gemessene Helligkeitsdifferenz durch die
-  tatsächlich vergangene Zeit zwischen den beiden Samples geteilt
+  vom zeitlichen Abstand zwischen den Samples ab. Damit der
+  Motion-Wert unabhängig von SAMPLE_FPS vergleichbar bleibt, wird
+  die gemessene Helligkeitsdifferenz durch die tatsächlich
+  vergangene Zeit zwischen den beiden Samples geteilt
   ("Helligkeitsänderung pro Sekunde").
 
-  MOTION_RATE_FOR_MAX_SCORE ist die Änderungsrate (in
-  Helligkeitsstufen pro Sekunde), die als "extrem starke Bewegung"
-  (Motion = 100) gilt. Kalibriert an der alten Skala: Diese nahm
-  eine Differenz von 25 Helligkeitsstufen zwischen zwei Samples
-  bei MOTION_REFERENCE_FPS als "sehr starke Bewegung" an - das
-  entspricht 25 * MOTION_REFERENCE_FPS Stufen pro Sekunde.
-
-  WICHTIG: Hier wird bewusst ein FESTER Referenzwert
-  (MOTION_REFERENCE_FPS) verwendet und NICHT die (ggf. später
-  geänderte) SAMPLE_FPS. Würde man stattdessen direkt SAMPLE_FPS
-  verwenden, würde sich SAMPLE_FPS in der Rechnung exakt
-  herauskürzen (weil deltaTime selbst schon ≈ 1/SAMPLE_FPS ist):
-
-    motionRate = avgDiff / deltaTime ≈ avgDiff * SAMPLE_FPS
-    motion = motionRate / (25 * SAMPLE_FPS) * 100
-           = avgDiff / 25 * 100   <- SAMPLE_FPS kürzt sich weg!
-
-  Die Zeitnormalisierung hätte dann überhaupt keine Wirkung mehr.
-  Mit einem fixen Referenzwert bleibt die Normalisierung
-  unabhängig davon, welche SAMPLE_FPS gerade eingestellt ist.
+  WICHTIG: MOTION_REFERENCE_FPS ist ein FESTER Referenzwert und
+  NICHT identisch mit der (jetzt vom Nutzer wählbaren) SAMPLE_FPS.
+  Würde man stattdessen SAMPLE_FPS selbst verwenden, würde sich
+  SAMPLE_FPS in der Rechnung exakt herauskürzen (weil deltaTime
+  selbst schon ≈ 1/SAMPLE_FPS ist) und die Zeitnormalisierung
+  hätte keine Wirkung mehr. Mit einem fixen Referenzwert bleibt
+  Motion unabhängig von der gewählten Sample-Rate vergleichbar.
 */
 const MOTION_REFERENCE_FPS = 10;
 const MOTION_RATE_FOR_MAX_SCORE = 25 * MOTION_REFERENCE_FPS;
@@ -717,7 +889,7 @@ const SEEK_TIMEOUT_MS = 3000;
   Fortschritt der Videoposition, bevor die Analyse
   als "am Ende angekommen" gewertet wird.
 */
-const STUCK_SAMPLES_LIMIT = 5;
+const STUCK_SAMPLES_LIMIT = 2;
 
 
 /*
@@ -747,7 +919,7 @@ const BLANK_DIFF_THRESHOLD = 2;
 // Anzahl aufeinanderfolgender "leerer" Frames, bevor die
 // Analyse abgebrochen und der betroffene Bereich verworfen
 // wird.
-const BLANK_STREAK_LIMIT = 50;
+const BLANK_STREAK_LIMIT = 5;
 
 
 /*
@@ -768,7 +940,37 @@ let isAnalyzing = false;
 let cancelRequested = false;
 let analysisStartTime = 0;
 let currentFileName = "";
+let currentSeriesName = "";
 let lastSummary = null;
+
+
+/*
+  Zoom-/Pan-Zustand des Charts.
+
+  chartViewStart/chartViewEnd definieren den aktuell sichtbaren
+  Zeitbereich (in Sekunden) innerhalb der Gesamtdauer
+  chartFullDuration. Werden nach jeder Analyse auf die volle
+  Videolänge zurückgesetzt.
+*/
+let chartFullDuration = 0;
+let chartViewStart = 0;
+let chartViewEnd = 0;
+
+const MIN_ZOOM_WINDOW_SECONDS = 0.5;
+
+let chartPointerActive = false;
+let chartPointerMoved = false;
+let chartPointerStartX = 0;
+let chartPointerStartViewStart = 0;
+let chartPointerStartWidth = 0;
+
+let playheadRafId = null;
+
+
+/*
+  Lokaler Speicher für den Video-Vergleich.
+*/
+const COMPARISON_STORAGE_KEY = "videoanalyse_vergleichsliste_v1";
 
 
 /*
@@ -832,6 +1034,10 @@ fileInput.addEventListener("change", () => {
   clearBtn.disabled = false;
   exportFramesBtn.disabled = true;
   exportSummaryBtn.disabled = true;
+  addToComparisonBtn.disabled = true;
+  zoomInBtn.disabled = true;
+  zoomOutBtn.disabled = true;
+  zoomResetBtn.disabled = true;
 
   statusEl.textContent =
     `${file.name} · ${(file.size / 1024 / 1024).toFixed(1)} MB`;
@@ -853,7 +1059,26 @@ fileInput.addEventListener("change", () => {
   previousFrame = null;
   nextBufferIndex = 0;
 
+  chartFullDuration = 0;
+  chartViewStart = 0;
+  chartViewEnd = 0;
+  zoomRangeLabelEl.textContent = "Ansicht: –";
+
   drawEmptyChart();
+});
+
+
+/*
+  ------------------------------------------------------------
+  Serienname
+  ------------------------------------------------------------
+
+  Wird für CSV-Dateinamen und den Vergleichs-Export verwendet.
+  Rein informativ, hat keinen Einfluss auf die Analyse selbst.
+*/
+
+seriesNameInput.addEventListener("input", () => {
+  currentSeriesName = seriesNameInput.value.trim();
 });
 
 
@@ -884,6 +1109,10 @@ clearBtn.addEventListener("click", () => {
   clearBtn.disabled = true;
   exportFramesBtn.disabled = true;
   exportSummaryBtn.disabled = true;
+  addToComparisonBtn.disabled = true;
+  zoomInBtn.disabled = true;
+  zoomOutBtn.disabled = true;
+  zoomResetBtn.disabled = true;
 
   results = [];
   previousFrame = null;
@@ -891,6 +1120,11 @@ clearBtn.addEventListener("click", () => {
 
   currentFileName = "";
   lastSummary = null;
+
+  chartFullDuration = 0;
+  chartViewStart = 0;
+  chartViewEnd = 0;
+  zoomRangeLabelEl.textContent = "Ansicht: –";
 
   statusEl.textContent =
     "Noch kein Video ausgewählt.";
@@ -949,10 +1183,23 @@ analyzeBtn.addEventListener("click", async () => {
   isAnalyzing = true;
   cancelRequested = false;
 
+  /*
+    Sample-Rate erst hier übernehmen (nicht live während einer
+    laufenden Analyse), damit eine Änderung der Auswahl nicht
+    mitten in der Analyse zu inkonsistenten deltaTime-Werten
+    führt.
+  */
+  SAMPLE_FPS = parseInt(fpsSelect.value, 10) || 10;
+  fpsSelect.disabled = true;
+
   analyzeBtn.textContent = "Abbrechen";
   clearBtn.disabled = true;
   exportFramesBtn.disabled = true;
   exportSummaryBtn.disabled = true;
+  addToComparisonBtn.disabled = true;
+  zoomInBtn.disabled = true;
+  zoomOutBtn.disabled = true;
+  zoomResetBtn.disabled = true;
 
   analysisStartTime = performance.now();
 
@@ -988,6 +1235,7 @@ analyzeBtn.addEventListener("click", async () => {
     analyzeBtn.textContent = "Analyse starten";
 
     clearBtn.disabled = false;
+    fpsSelect.disabled = false;
   }
 });
 
@@ -1523,13 +1771,10 @@ function analyzeFrame(data, previousData, deltaTime) {
   /*
     Bewegung - roh, pro Sample-Schritt (nicht zeitnormalisiert).
 
-    25 Helligkeitsstufen Unterschied zwischen zwei Samples wurden
-    bisher als sehr starke Bewegung betrachtet. Dieser Rohwert ist
-    von SAMPLE_FPS abhängig und wird deshalb NICHT mehr als
-    eigentlicher Motion-Wert verwendet. Er bleibt hier unverändert
-    erhalten und wird ausschließlich für den Schnittscore weiter
-    unten verwendet, damit sich die Schnitterkennung durch die
-    neue Motion-Skalierung nicht verändert.
+    Dieser Rohwert ist von SAMPLE_FPS abhängig und wird deshalb
+    NICHT als eigentlicher Motion-Wert verwendet, sondern nur für
+    den Schnittscore weiter unten, damit sich die Schnitterkennung
+    durch die neue Motion-Skalierung nicht verändert.
   */
 
   const averageMotionDifference =
@@ -1542,14 +1787,6 @@ function analyzeFrame(data, previousData, deltaTime) {
   /*
     Bewegung - zeitnormalisiert (0-100, für Chart/Kachel) und roh
     (für die wissenschaftliche Auswertung, z. B. CSV-Export).
-
-    Damit der Motion-Wert unabhängig von der eingestellten
-    SAMPLE_FPS vergleichbar bleibt, wird die Helligkeitsdifferenz
-    durch die tatsächlich vergangene Zeit zum vorherigen Sample
-    geteilt ("Helligkeitsänderung pro Sekunde" = motionRaw).
-    deltaTime wird dabei nach unten begrenzt, um eine Division
-    durch 0 bzw. unrealistische Ausreißer bei sehr kleinen oder
-    negativen Zeitabständen zu verhindern.
   */
 
   const safeDeltaTime =
@@ -1565,15 +1802,10 @@ function analyzeFrame(data, previousData, deltaTime) {
   /*
     Schnittscore.
 
-    50 durchschnittliche RGB-Stufen
-    entsprechen einem sehr starken Unterschied.
-
-    Bewegung alleine soll keinen Schnitt erzeugen, deshalb
-    wird der visuelle Sprung stärker gewichtet als die
-    Bewegung. Hier wird bewusst weiterhin motionForCutScore (die
-    bisherige, nicht zeitnormalisierte Bewegung) verwendet, damit
-    sich die Schnitterkennung durch die neue Motion-Skalierung
-    nicht verändert.
+    Hier wird bewusst weiterhin motionForCutScore (die bisherige,
+    nicht zeitnormalisierte Bewegung) verwendet, damit sich die
+    Schnitterkennung durch die neue Motion-Skalierung nicht
+    verändert.
   */
 
   const averageCutDifference =
@@ -1625,10 +1857,9 @@ function finishAnalysis(wasCancelled) {
     Durchschnittswerte.
 
     Neben den kalibrierten 0-100-Werten (für Kacheln/Chart wie
-    bisher) werden zusätzlich die unnormierten Rohwerte
-    berechnet. Diese sind für eine eigene wissenschaftliche
-    Normierung gedacht (siehe CSV-Export) und unterliegen keiner
-    festen Referenzgröße oder Klemmung auf 0-100.
+    bisher) werden zusätzlich die unnormierten Rohwerte berechnet,
+    für eine eigene wissenschaftliche Normierung (siehe
+    CSV-Export).
   */
 
   const avgContrast =
@@ -1695,16 +1926,33 @@ function finishAnalysis(wasCancelled) {
 
   renderCutList(cuts);
 
-  drawChart(results, cuts);
+
+  /*
+    Zoom-Ansicht auf die volle Videolänge zurücksetzen und
+    Zoom-Buttons freigeben.
+  */
+
+  chartFullDuration = results[results.length - 1].time;
+  chartViewStart = 0;
+  chartViewEnd = chartFullDuration;
+
+  zoomInBtn.disabled = false;
+  zoomOutBtn.disabled = false;
+  zoomResetBtn.disabled = false;
+
+  updateZoomRangeLabel();
+  drawChart(results, cuts, chartViewStart, chartViewEnd);
 
   exportFramesBtn.disabled = false;
   exportSummaryBtn.disabled = false;
+  addToComparisonBtn.disabled = false;
 
 
   const analysisTime = (performance.now() - analysisStartTime) / 1000;
   const formattedTime = analysisTime.toFixed(1).replace(".", ",");
 
   lastSummary = {
+    seriesName: currentSeriesName,
     fileName: currentFileName,
     frameCount: results.length,
     sampleFps: SAMPLE_FPS,
@@ -1850,7 +2098,8 @@ function renderCutList(cuts) {
 
 
     /*
-      Klick auf Schnitt springt im Video dorthin.
+      Klick auf Schnitt springt im Video dorthin und zentriert
+      die Zoom-Ansicht des Charts auf diese Stelle.
     */
 
     element.addEventListener("click", () => {
@@ -1859,6 +2108,17 @@ function renderCutList(cuts) {
         cut.time;
 
       video.play().catch(() => {});
+
+      if (results.length) {
+
+        const width =
+          chartViewEnd - chartViewStart || Math.min(4, chartFullDuration);
+
+        setChartView(
+          cut.time - width / 2,
+          cut.time + width / 2
+        );
+      }
 
     });
 
@@ -1957,7 +2217,7 @@ function drawEmptyChart() {
 }
 
 
-function drawChart(data, cuts) {
+function drawChart(data, cuts, viewStart, viewEnd) {
 
   const {
     width,
@@ -1971,6 +2231,32 @@ function drawChart(data, cuts) {
     width,
     height
   );
+
+
+  /*
+    Sichtbarer Zeitbereich.
+
+    Ohne explizite Angabe wird die volle Länge angezeigt
+    (bisheriges Verhalten). Mit viewStart/viewEnd kann ein
+    beliebiger Ausschnitt (Zoom) dargestellt werden - die Werte
+    stammen von chartViewStart/chartViewEnd.
+  */
+
+  const fullEndTime =
+    data[data.length - 1].time;
+
+  const start =
+    typeof viewStart === "number" ? viewStart : 0;
+
+  const end =
+    typeof viewEnd === "number" ? viewEnd : fullEndTime;
+
+  const span =
+    Math.max(end - start, 0.001);
+
+  function timeToX(time) {
+    return ((time - start) / span) * width;
+  }
 
 
   /*
@@ -2006,6 +2292,22 @@ function drawChart(data, cuts) {
 
 
   /*
+    Nur Punkte innerhalb (plus ein kleiner Rand) des sichtbaren
+    Bereichs zeichnen. Das hält die Linie beim Reinzoomen
+    durchgängig und spart bei langen Videos unnötige Arbeit.
+  */
+
+  const padding = span * 0.05;
+
+  const visibleData =
+    data.filter(
+      item =>
+        item.time >= start - padding &&
+        item.time <= end + padding
+    );
+
+
+  /*
     Funktion zum Zeichnen einer Kurve.
   */
 
@@ -2015,6 +2317,10 @@ function drawChart(data, cuts) {
     color
   ) {
 
+    if (!visibleData.length) {
+      return;
+    }
+
     chartCtx.beginPath();
 
     chartCtx.lineWidth = lineWidth;
@@ -2022,11 +2328,10 @@ function drawChart(data, cuts) {
     chartCtx.strokeStyle = color;
 
 
-    data.forEach((item, index) => {
+    visibleData.forEach((item, index) => {
 
       const x =
-        (item.time / data[data.length - 1].time)
-        * width;
+        timeToX(item.time);
 
       const y =
         height -
@@ -2074,24 +2379,8 @@ function drawChart(data, cuts) {
   );
 
 
-  /*
-    Schnittscore gepunktet.
-  */
-/*
-  chartCtx.setLineDash([
-    2,
-    5
-  ]);
-
-  drawLine(
-    "cutScore",
-    1,
-    "#FF5252"
-  );
-
-
   chartCtx.setLineDash([]);
-*/
+
 
   /*
     Schnittmarkierungen.
@@ -2104,33 +2393,331 @@ function drawChart(data, cuts) {
   chartCtx.lineWidth = 2;
 
 
-  cuts.forEach(cut => {
+  cuts
+    .filter(cut => cut.time >= start - padding && cut.time <= end + padding)
+    .forEach(cut => {
 
-    const x =
-      (cut.time / data[data.length - 1].time)
-      * width;
+      const x =
+        timeToX(cut.time);
 
+
+      chartCtx.beginPath();
+
+      chartCtx.moveTo(
+        x,
+        0
+      );
+
+      chartCtx.lineTo(
+        x,
+        height
+      );
+
+      chartCtx.stroke();
+
+    });
+
+
+  /*
+    Wiedergabeposition (Playhead).
+
+    Zeigt die aktuelle Videoposition als weiße Linie, sofern sie
+    im sichtbaren Zeitbereich liegt. Ermöglicht den direkten
+    Abgleich zwischen Video und Messwerten.
+  */
+
+  if (
+    videoURL &&
+    isFinite(video.currentTime) &&
+    video.currentTime >= start &&
+    video.currentTime <= end
+  ) {
+
+    const playheadX =
+      timeToX(video.currentTime);
+
+    chartCtx.strokeStyle = "#fff";
+    chartCtx.lineWidth = 2;
 
     chartCtx.beginPath();
-
-    chartCtx.moveTo(
-      x,
-      0
-    );
-
-    chartCtx.lineTo(
-      x,
-      height
-    );
-
+    chartCtx.moveTo(playheadX, 0);
+    chartCtx.lineTo(playheadX, height);
     chartCtx.stroke();
-
-  });
+  }
 }
 
 
 /*
+  ------------------------------------------------------------
+  Zoom / Pan
+  ------------------------------------------------------------
+
+  Der Chart zeigt standardmäßig die volle Videolänge. Über
+  Zoom-Buttons, Mausrad oder Ziehen (Maus/Touch) kann in einen
+  Zeitbereich hineingezoomt werden, um einzelne Messwerte genau
+  mit dem Video abzugleichen.
+  ------------------------------------------------------------
+*/
+
+function clampView(start, end) {
+
+  let width =
+    clamp(end - start, MIN_ZOOM_WINDOW_SECONDS, Math.max(chartFullDuration, MIN_ZOOM_WINDOW_SECONDS));
+
+  let s = start;
+  let e = s + width;
+
+  if (s < 0) {
+    s = 0;
+    e = width;
+  }
+
+  if (e > chartFullDuration) {
+    e = chartFullDuration;
+    s = Math.max(0, e - width);
+  }
+
+  return { start: s, end: e };
+}
+
+
+function updateZoomRangeLabel() {
+
+  if (!results.length) {
+    zoomRangeLabelEl.textContent = "Ansicht: –";
+    return;
+  }
+
+  const spanSeconds = chartViewEnd - chartViewStart;
+
+  zoomRangeLabelEl.textContent =
+    `Ansicht: ${formatTime(chartViewStart)}–${formatTime(chartViewEnd)} (${formatDecimal(spanSeconds, 1)} s)`;
+}
+
+
+function setChartView(start, end) {
+
+  if (!results.length) {
+    return;
+  }
+
+  const clamped = clampView(start, end);
+
+  chartViewStart = clamped.start;
+  chartViewEnd = clamped.end;
+
+  updateZoomRangeLabel();
+
+  drawChart(
+    results,
+    detectCuts(results),
+    chartViewStart,
+    chartViewEnd
+  );
+}
+
+
+function zoomChartAround(centerTime, factor) {
+
+  const currentWidth = chartViewEnd - chartViewStart;
+  const newWidth = currentWidth * factor;
+
+  setChartView(
+    centerTime - newWidth / 2,
+    centerTime + newWidth / 2
+  );
+}
+
+
+zoomInBtn.addEventListener("click", () => {
+  const center = (chartViewStart + chartViewEnd) / 2;
+  zoomChartAround(center, 0.5);
+});
+
+zoomOutBtn.addEventListener("click", () => {
+  const center = (chartViewStart + chartViewEnd) / 2;
+  zoomChartAround(center, 2);
+});
+
+zoomResetBtn.addEventListener("click", () => {
+  setChartView(0, chartFullDuration);
+});
+
+
+/*
+  Mausrad: Zoom zentriert auf die Cursor-Position.
+*/
+
+chart.addEventListener("wheel", (event) => {
+
+  if (!results.length) {
+    return;
+  }
+
+  event.preventDefault();
+
+  const rect = chart.getBoundingClientRect();
+  const fraction = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+  const timeAtCursor = chartViewStart + fraction * (chartViewEnd - chartViewStart);
+  const factor = event.deltaY < 0 ? 0.8 : 1.25;
+
+  zoomChartAround(timeAtCursor, factor);
+
+}, { passive: false });
+
+
+/*
+  Ziehen (Maus/Touch über Pointer Events): Ansicht verschieben.
+  Ein Klick ohne nennenswerte Bewegung springt stattdessen im
+  Video an diese Stelle.
+*/
+
+chart.addEventListener("pointerdown", (event) => {
+
+  if (!results.length) {
+    return;
+  }
+
+  chartPointerActive = true;
+  chartPointerMoved = false;
+  chartPointerStartX = event.clientX;
+  chartPointerStartViewStart = chartViewStart;
+  chartPointerStartWidth = chartViewEnd - chartViewStart;
+
+  chart.setPointerCapture(event.pointerId);
+});
+
+chart.addEventListener("pointermove", (event) => {
+
+  if (!chartPointerActive) {
+    return;
+  }
+
+  const dx = event.clientX - chartPointerStartX;
+
+  if (Math.abs(dx) > 4) {
+    chartPointerMoved = true;
+  }
+
+  const rect = chart.getBoundingClientRect();
+  const timeDelta = -(dx / rect.width) * chartPointerStartWidth;
+
+  setChartView(
+    chartPointerStartViewStart + timeDelta,
+    chartPointerStartViewStart + timeDelta + chartPointerStartWidth
+  );
+});
+
+chart.addEventListener("pointerup", (event) => {
+
+  if (!chartPointerActive) {
+    return;
+  }
+
+  chartPointerActive = false;
+
+  if (!chartPointerMoved && results.length) {
+
+    const rect = chart.getBoundingClientRect();
+    const fraction = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+    const time = chartViewStart + fraction * (chartViewEnd - chartViewStart);
+
+    video.currentTime = clamp(time, 0, chartFullDuration);
+  }
+});
+
+
+/*
+  ------------------------------------------------------------
+  Synchronisation mit der Video-Wiedergabe
+  ------------------------------------------------------------
+
+  Während der Wiedergabe wird der Chart per requestAnimationFrame
+  laufend neu gezeichnet (Playhead) und die Ansicht automatisch
+  nachgeführt, falls die Wiedergabeposition den Rand des aktuell
+  sichtbaren Zeitfensters verlässt. So bleibt der Chart bei
+  starkem Zoom synchron zum Video.
+  ------------------------------------------------------------
+*/
+
+function autoPanToPlayhead() {
+
+  const t = video.currentTime;
+
+  if (t < chartViewStart || t > chartViewEnd) {
+
+    const width = chartViewEnd - chartViewStart;
+    const clamped = clampView(t - width / 2, t + width / 2);
+
+    chartViewStart = clamped.start;
+    chartViewEnd = clamped.end;
+
+    updateZoomRangeLabel();
+  }
+}
+
+function playbackSyncTick() {
+
+  if (results.length) {
+
+    autoPanToPlayhead();
+
+    drawChart(
+      results,
+      detectCuts(results),
+      chartViewStart,
+      chartViewEnd
+    );
+  }
+
+  if (!video.paused && !video.ended) {
+    playheadRafId = requestAnimationFrame(playbackSyncTick);
+  } else {
+    playheadRafId = null;
+  }
+}
+
+video.addEventListener("play", () => {
+
+  if (playheadRafId === null) {
+    playheadRafId = requestAnimationFrame(playbackSyncTick);
+  }
+});
+
+video.addEventListener("seeked", () => {
+
+  if (results.length && video.paused) {
+
+    autoPanToPlayhead();
+
+    drawChart(
+      results,
+      detectCuts(results),
+      chartViewStart,
+      chartViewEnd
+    );
+  }
+});
+
+video.addEventListener("pause", () => {
+
+  if (results.length) {
+
+    drawChart(
+      results,
+      detectCuts(results),
+      chartViewStart,
+      chartViewEnd
+    );
+  }
+});
+
+
+/*
   Fenstergröße geändert.
+
+  Zeichnet den Chart mit der aktuell gewählten Zoom-Ansicht neu
+  statt immer auf die volle Länge zurückzuspringen.
 */
 
 window.addEventListener(
@@ -2141,7 +2728,9 @@ window.addEventListener(
 
       drawChart(
         results,
-        detectCuts(results)
+        detectCuts(results),
+        chartViewStart,
+        chartViewEnd
       );
 
     } else {
@@ -2246,7 +2835,7 @@ function nextFrame() {
 
 /*
   ------------------------------------------------------------
-  CSV-Export
+  CSV-Export (aktuelles Video)
   ------------------------------------------------------------
 
   Zwei getrennte Dateien:
@@ -2254,8 +2843,7 @@ function nextFrame() {
   - Einzelbilder: eine Zeile pro analysiertem Frame mit sowohl
     den Rohwerten (unnormiert, für eigene Auswertung/Normierung)
     als auch den in der App verwendeten kalibrierten 0-100-Werten.
-  - Zusammenfassung: Kennzahlen zur gesamten Analyse (Mittelwerte,
-    Anzahl Schnitte, verwendete Einstellungen).
+  - Zusammenfassung: Kennzahlen zur gesamten Analyse.
 
   Format: Semikolon als Trennzeichen, Komma als Dezimaltrennzeichen
   (deutsches Excel-CSV-Format). Ein BOM wird vorangestellt, damit
@@ -2268,13 +2856,6 @@ function buildFramesCsv() {
   if (!results.length) {
     return null;
   }
-
-  /*
-    Cuts werden hier erneut über detectCuts() ermittelt statt
-    zusätzlich zwischengespeichert zu werden. detectCuts() ist
-    eine reine Funktion von "results", das Ergebnis ist also
-    identisch zu dem, was zuletzt in der App angezeigt wurde.
-  */
 
   const cuts = detectCuts(results);
   const cutTimes = new Set(cuts.map(cut => cut.time));
@@ -2313,6 +2894,7 @@ function buildSummaryCsv() {
 
   const rows = [
     ["Kennzahl", "Wert"],
+    ["Serie", lastSummary.seriesName || "-"],
     ["Dateiname", lastSummary.fileName || "-"],
     ["Sample_FPS", lastSummary.sampleFps],
     ["Analyseaufloesung_px", `${lastSummary.analysisWidth}x${lastSummary.analysisHeight}`],
@@ -2334,12 +2916,11 @@ function buildSummaryCsv() {
 
 function sanitizeFileNameBase() {
 
-  const base =
-    currentFileName
-      ? currentFileName.replace(/\.[^/.]+$/, "")
-      : "videoanalyse";
+  const raw =
+    currentSeriesName ||
+    (currentFileName ? currentFileName.replace(/\.[^/.]+$/, "") : "videoanalyse");
 
-  return base.replace(/[^a-z0-9_-]+/gi, "_");
+  return raw.replace(/[^a-z0-9_-]+/gi, "_");
 }
 
 
@@ -2368,10 +2949,8 @@ function downloadCsv(content, filename) {
 
 exportFramesBtn.addEventListener("click", () => {
 
-  const csv = buildFramesCsv();
-
   downloadCsv(
-    csv,
+    buildFramesCsv(),
     `${sanitizeFileNameBase()}_einzelbilder.csv`
   );
 });
@@ -2379,20 +2958,186 @@ exportFramesBtn.addEventListener("click", () => {
 
 exportSummaryBtn.addEventListener("click", () => {
 
-  const csv = buildSummaryCsv();
-
   downloadCsv(
-    csv,
+    buildSummaryCsv(),
     `${sanitizeFileNameBase()}_zusammenfassung.csv`
   );
 });
 
 
 /*
-  Initialer Chart.
+  ------------------------------------------------------------
+  Vergleich mehrerer Videos (lokaler Speicher)
+  ------------------------------------------------------------
+
+  Jede Analyse kann per Button der Vergleichsliste hinzugefügt
+  werden. Diese wird in localStorage abgelegt und bleibt damit
+  auch nach dem Schließen/Neuladen der Seite erhalten (sofern die
+  Datei in einem normalen Browser-Tab geöffnet ist - in einer
+  eingebetteten/sandboxed Vorschau kann localStorage geblockt
+  sein, siehe try/catch unten).
+  ------------------------------------------------------------
+*/
+
+function loadComparisonList() {
+
+  try {
+
+    const raw = localStorage.getItem(COMPARISON_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+
+  } catch (error) {
+
+    console.error("Vergleichsliste konnte nicht gelesen werden.", error);
+    return [];
+  }
+}
+
+
+function saveComparisonList(list) {
+
+  try {
+
+    localStorage.setItem(COMPARISON_STORAGE_KEY, JSON.stringify(list));
+    return true;
+
+  } catch (error) {
+
+    console.error("Vergleichsliste konnte nicht gespeichert werden.", error);
+    return false;
+  }
+}
+
+
+function updateComparisonUi() {
+
+  const list = loadComparisonList();
+
+  comparisonCountEl.textContent =
+    `${list.length} Video${list.length === 1 ? "" : "s"} gespeichert`;
+
+  exportComparisonBtn.disabled = list.length === 0;
+  clearComparisonBtn.disabled = list.length === 0;
+}
+
+
+function buildComparisonCsv(list) {
+
+  if (!list.length) {
+    return null;
+  }
+
+  const header = [
+    "Serie",
+    "Dateiname",
+    "Gespeichert_am",
+    "Sample_FPS",
+    "Anzahl_Frames",
+    "Anzahl_Schnitte",
+    "Kontrast_roh_sigma_Mittelwert",
+    "Kontrast_norm_0_100_Mittelwert",
+    "Bewegung_roh_Helligkeit_pro_s_Mittelwert",
+    "Bewegung_norm_0_100_Mittelwert",
+    "SchnittIntensitaet_roh_deltaRGB_Mittelwert",
+    "SchnittScore_norm_0_100_Mittelwert",
+    "Analysezeit_s"
+  ].join(";");
+
+  const rows = list.map(entry => [
+    entry.seriesName || "-",
+    entry.fileName || "-",
+    entry.savedAt || "-",
+    entry.sampleFps,
+    entry.frameCount,
+    entry.cutCount,
+    formatDecimal(entry.avgContrastRaw, 3),
+    formatDecimal(entry.avgContrast, 2),
+    formatDecimal(entry.avgMotionRaw, 3),
+    formatDecimal(entry.avgMotion, 2),
+    formatDecimal(entry.avgCutDiffRaw, 3),
+    formatDecimal(entry.avgCutScoreNorm, 2),
+    formatDecimal(entry.analysisTimeSeconds, 1)
+  ].join(";"));
+
+  return [header, ...rows].join("\r\n");
+}
+
+
+addToComparisonBtn.addEventListener("click", () => {
+
+  if (!lastSummary) {
+    return;
+  }
+
+  const list = loadComparisonList();
+
+  list.push({
+    seriesName: lastSummary.seriesName,
+    fileName: lastSummary.fileName,
+    savedAt: new Date().toISOString(),
+    sampleFps: lastSummary.sampleFps,
+    frameCount: lastSummary.frameCount,
+    cutCount: lastSummary.cutCount,
+    avgContrastRaw: lastSummary.avgContrastRaw,
+    avgContrast: lastSummary.avgContrast,
+    avgMotionRaw: lastSummary.avgMotionRaw,
+    avgMotion: lastSummary.avgMotion,
+    avgCutDiffRaw: lastSummary.avgCutDiffRaw,
+    avgCutScoreNorm: lastSummary.avgCutScoreNorm,
+    analysisTimeSeconds: lastSummary.analysisTimeSeconds
+  });
+
+  const success = saveComparisonList(list);
+
+  if (success) {
+
+    statusEl.textContent = "Zur Vergleichsliste hinzugefügt.";
+    updateComparisonUi();
+
+  } else {
+
+    statusEl.textContent =
+      "Konnte nicht im lokalen Speicher abgelegt werden (evtl. blockiert der Browser lokalen Speicher in dieser Ansicht).";
+  }
+});
+
+
+exportComparisonBtn.addEventListener("click", () => {
+
+  downloadCsv(
+    buildComparisonCsv(loadComparisonList()),
+    "videoanalyse_vergleich.csv"
+  );
+});
+
+
+clearComparisonBtn.addEventListener("click", () => {
+
+  const confirmed =
+    window.confirm(
+      "Vergleichsliste wirklich leeren? Das kann nicht rückgängig gemacht werden."
+    );
+
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    localStorage.removeItem(COMPARISON_STORAGE_KEY);
+  } catch (error) {
+    console.error("Vergleichsliste konnte nicht gelöscht werden.", error);
+  }
+
+  updateComparisonUi();
+});
+
+
+/*
+  Initialer Chart und Vergleichsliste.
 */
 
 drawEmptyChart();
+updateComparisonUi();
 
 </script>
 
