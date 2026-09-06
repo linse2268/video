@@ -619,7 +619,7 @@ const ANALYSIS_HEIGHT = 90;
   Wert (z. B. 30) vervielfacht die Anzahl der Seeks, ohne dass
   Kontrast/Bewegung/Schnitte spürbar genauer erkannt werden.
 */
-const SAMPLE_FPS = 30;
+const SAMPLE_FPS = 10;
 
 
 /*
@@ -638,13 +638,28 @@ const SAMPLE_FPS = 30;
 
   MOTION_RATE_FOR_MAX_SCORE ist die Änderungsrate (in
   Helligkeitsstufen pro Sekunde), die als "extrem starke Bewegung"
-  (Motion = 100) gilt. Der Wert ist so kalibriert, dass er bei der
-  aktuell eingestellten SAMPLE_FPS ungefähr der bisherigen Skala
-  entspricht: Diese nahm eine Differenz von 25 Helligkeitsstufen
-  zwischen zwei Samples bei SAMPLE_FPS als "sehr starke Bewegung"
-  an - das entspricht 25 * SAMPLE_FPS Stufen pro Sekunde.
+  (Motion = 100) gilt. Kalibriert an der alten Skala: Diese nahm
+  eine Differenz von 25 Helligkeitsstufen zwischen zwei Samples
+  bei MOTION_REFERENCE_FPS als "sehr starke Bewegung" an - das
+  entspricht 25 * MOTION_REFERENCE_FPS Stufen pro Sekunde.
+
+  WICHTIG: Hier wird bewusst ein FESTER Referenzwert
+  (MOTION_REFERENCE_FPS) verwendet und NICHT die (ggf. später
+  geänderte) SAMPLE_FPS. Würde man stattdessen direkt SAMPLE_FPS
+  verwenden, würde sich SAMPLE_FPS in der Rechnung exakt
+  herauskürzen (weil deltaTime selbst schon ≈ 1/SAMPLE_FPS ist):
+
+    motionRate = avgDiff / deltaTime ≈ avgDiff * SAMPLE_FPS
+    motion = motionRate / (25 * SAMPLE_FPS) * 100
+           = avgDiff / 25 * 100   <- SAMPLE_FPS kürzt sich weg!
+
+  Die Zeitnormalisierung hätte dann überhaupt keine Wirkung mehr
+  (das war der ursprüngliche Fehler). Mit einem fixen Referenzwert
+  bleibt die Normalisierung unabhängig davon, welche SAMPLE_FPS
+  gerade eingestellt ist.
 */
-const MOTION_RATE_FOR_MAX_SCORE = 25 * SAMPLE_FPS;
+const MOTION_REFERENCE_FPS = 10;
+const MOTION_RATE_FOR_MAX_SCORE = 25 * MOTION_REFERENCE_FPS;
 
 
 /*
