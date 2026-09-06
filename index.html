@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>Videoanalyse</title>
+  <title>Neue Videoanalyse</title>
   <link rel="icon" type="image/city" href="/images/city.png">
 
   <style>
@@ -226,11 +226,81 @@
         overflow: hidden;
     }
 
+    .chart-body {
+        display: flex;
+        align-items: stretch;
+        gap: 8px;
+    }
+
+    .chart-y-axis {
+        display: flex;
+        flex: 0 0 auto;
+        flex-direction: column;
+        justify-content: space-between;
+
+        padding: 2px 0;
+
+        color: #666;
+        font-size: 11px;
+        line-height: 1;
+        text-align: right;
+    }
+
     canvas.chart {
         display: block;
+        flex: 1 1 auto;
+        min-width: 0;
         width: 100%;
         max-width: 100%;
         height: 250px;
+    }
+
+    .chart-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 16px;
+
+        margin-top: 12px;
+
+        color: #aaa;
+        font-size: 12px;
+    }
+
+    .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .legend-swatch {
+        display: inline-block;
+        flex: 0 0 auto;
+
+        width: 14px;
+        height: 3px;
+
+        border-radius: 2px;
+    }
+
+    .legend-swatch.contrast {
+        background: #4CAF50;
+    }
+
+    .legend-swatch.motion {
+        background: repeating-linear-gradient(
+            to right,
+            #2196F3 0,
+            #2196F3 4px,
+            transparent 4px,
+            transparent 8px
+        );
+    }
+
+    .legend-swatch.cut {
+        width: 3px;
+        height: 14px;
+
+        background: #FF5252;
     }
 
 
@@ -355,7 +425,7 @@
 
 <div class="app">
 
-  <h1>Videoanalyse</h1>
+  <h1>Neue Videoanalyse</h1>
   <div class="subtitle">
     Farbkontrast · Bewegung · Schnitte
   </div>
@@ -381,7 +451,7 @@
     </button>
   </div>
 
-  <div class="status" id="status">
+  <div class="status" id="status" role="status" aria-live="polite" aria-atomic="true">
     Noch kein Video ausgewählt.
   </div>
 
@@ -410,7 +480,28 @@
   </div>
 
   <div class="chart-container">
-    <canvas id="chart" class="chart"></canvas>
+    <div class="chart-body">
+      <div class="chart-y-axis" aria-hidden="true">
+        <span>100%</span>
+        <span>50%</span>
+        <span>0%</span>
+      </div>
+      <canvas id="chart" class="chart"></canvas>
+    </div>
+    <div class="chart-legend">
+      <span class="legend-item">
+        <span class="legend-swatch contrast"></span>
+        Farbkontrast
+      </span>
+      <span class="legend-item">
+        <span class="legend-swatch motion"></span>
+        Bewegung
+      </span>
+      <span class="legend-item">
+        <span class="legend-swatch cut"></span>
+        Schnitt
+      </span>
+    </div>
   </div>
 
   <div class="cuts">
@@ -444,6 +535,47 @@
 
   Keine externen Libraries.
   Keine Serververbindung.
+
+  ------------------------------------------------------------
+  Änderungen in dieser Version:
+
+  - Fortschritt & Frame-Zeitstempel basieren auf der tatsächlichen
+    Videoposition (video.currentTime) statt auf einer rein
+    rechnerischen Zeit. Dadurch stimmt die Fortschrittsanzeige
+    auch dann, wenn video.duration ungenau ist.
+  - Erkennung, wenn das Video beim Seek nicht mehr vorankommt
+    (z. B. weil das tatsächliche Ende schon erreicht ist, aber
+    video.duration einen größeren Wert meldet). Die Analyse
+    bricht dann sauber ab, statt denselben Frame endlos erneut
+    zu analysieren.
+  - Zusätzliche inhaltsbasierte Endeerkennung: Bei manchen
+    Dateien meldet der Browser eine falsche video.duration UND
+    video.currentTime bewegt sich beim Seek trotzdem weiter,
+    obwohl gar kein echter Frame mehr dekodiert werden kann.
+    Das äußert sich als schwarzer, eingefrorener Frame ohne
+    jede Veränderung zum vorherigen Frame. Wird das erkannt
+    (mehrere Frames hintereinander schwarz UND unverändert),
+    gilt das echte Ende als erreicht; die betroffenen Frames
+    werden aus dem Ergebnis entfernt.
+  - Die tatsächlich nutzbare Videolänge wird zusätzlich über
+    video.seekable ermittelt, falls verfügbar. Das liefert bei
+    manchen fehlerhaften Dateien von vornherein einen
+    genaueren Wert als video.duration.
+  - SAMPLE_FPS von 30 auf 10 reduziert (siehe Kommentar unten).
+  - Kontrast/Bewegung/Schnitt werden in einem gemeinsamen
+    Pixel-Durchlauf berechnet statt in drei getrennten.
+  - Wiederverwendete Puffer für den vorherigen Frame statt
+    einer neuen Array-Allokation pro Frame.
+  - Timeout beim Seek, damit die Analyse nicht endlos hängt,
+    falls das "seeked"-Event einmal nicht feuert.
+  - Abbrechen-Möglichkeit über den vorhandenen "Analyse
+    starten"-Button (wechselt während der Analyse zu
+    "Abbrechen").
+  - Einfache Dateityp-Prüfung bei der Auswahl.
+  - Seitenverhältnis wird beim Verkleinern auf die
+    Analyseauflösung beibehalten (Letterboxing), damit das
+    Bild nicht verzerrt wird.
+  ------------------------------------------------------------
 */
 
 
@@ -465,24 +597,111 @@ const chartCtx = chart.getContext("2d");
 
 
 /*
-  Kleine Analyseauflösung.
+  Analyseauflösung.
 
-  96 x 54 = 5184 Pixel pro Frame.
+  160 x 90 = 14.400 Pixel pro Frame.
 
   Das ist absichtlich klein, damit die Analyse
   auch auf Smartphones schnell bleibt.
 */
-const ANALYSIS_WIDTH = 160; //96
-const ANALYSIS_HEIGHT = 90; // 54
+const ANALYSIS_WIDTH = 160;
+const ANALYSIS_HEIGHT = 90;
 
 
 /*
   Anzahl Frames pro Sekunde.
 
-  8 FPS ist für Farb-/Bewegungs-/Schnittanalyse
+  10 FPS ist für Farb-/Bewegungs-/Schnittanalyse
   ein guter Kompromiss für mobile Geräte.
+
+  Jeder Sample-Schritt braucht einen Seek im Video, und das
+  ist der mit Abstand teuerste Teil der Analyse. Ein zu hoher
+  Wert (z. B. 30) vervielfacht die Anzahl der Seeks, ohne dass
+  Kontrast/Bewegung/Schnitte spürbar genauer erkannt werden.
 */
-const SAMPLE_FPS = 30;
+const SAMPLE_FPS = 10;
+
+
+/*
+  Zeitnormalisierung für die Bewegungsanalyse.
+
+  Die rohe Helligkeitsdifferenz zwischen zwei Samples hängt stark
+  vom zeitlichen Abstand zwischen den Samples ab: Bei hoher
+  SAMPLE_FPS liegen die Samples näher beieinander, wodurch bei
+  gleicher tatsächlicher Bewegung im Video eine kleinere Differenz
+  gemessen wird als bei niedriger SAMPLE_FPS.
+
+  Damit der Motion-Wert unabhängig von SAMPLE_FPS vergleichbar
+  bleibt, wird die gemessene Helligkeitsdifferenz durch die
+  tatsächlich vergangene Zeit zwischen den beiden Samples geteilt
+  ("Helligkeitsänderung pro Sekunde").
+
+  MOTION_RATE_FOR_MAX_SCORE ist die Änderungsrate (in
+  Helligkeitsstufen pro Sekunde), die als "extrem starke Bewegung"
+  (Motion = 100) gilt. Der Wert ist so kalibriert, dass er bei der
+  aktuell eingestellten SAMPLE_FPS ungefähr der bisherigen Skala
+  entspricht: Diese nahm eine Differenz von 25 Helligkeitsstufen
+  zwischen zwei Samples bei SAMPLE_FPS als "sehr starke Bewegung"
+  an - das entspricht 25 * SAMPLE_FPS Stufen pro Sekunde.
+*/
+const MOTION_RATE_FOR_MAX_SCORE = 25 * SAMPLE_FPS;
+
+
+/*
+  Untere Grenze für deltaTime bei der Bewegungsberechnung.
+
+  Verhindert eine Division durch 0 bzw. unrealistisch hohe
+  Ausreißer, falls zwei Samples (z. B. durch Rundungsfehler beim
+  Seek) einen extrem kleinen oder keinen zeitlichen Abstand haben.
+*/
+const MOTION_MIN_DELTA_TIME = 1 / 120;
+
+
+/*
+  Timeout für einen einzelnen Seek-Vorgang.
+
+  Falls das "seeked"-Event aus irgendeinem Grund nicht feuert,
+  würde die Analyse sonst unbegrenzt hängen bleiben.
+*/
+const SEEK_TIMEOUT_MS = 3000;
+
+
+/*
+  Mindestens zwei aufeinanderfolgende Samples ohne
+  Fortschritt der Videoposition, bevor die Analyse
+  als "am Ende angekommen" gewertet wird.
+*/
+const STUCK_SAMPLES_LIMIT = 2;
+
+
+/*
+  Inhaltsbasierte Endeerkennung.
+
+  Manche Videodateien haben eine video.duration, die länger
+  ist als der tatsächlich dekodierbare Inhalt. In diesem Fall
+  bewegt sich video.currentTime beim Seek zwar trotzdem weiter
+  (die STUCK-Erkennung oben greift also nicht), es wird aber
+  kein echter Frame mehr geliefert - stattdessen ein schwarzer,
+  unveränderter Frame.
+
+  Ein Frame gilt als "leer", wenn er nahezu schwarz ist UND
+  sich praktisch nicht vom vorherigen Frame unterscheidet.
+  Tritt das mehrfach hintereinander auf, ist das echte Ende
+  erreicht.
+*/
+
+// Mittlere Luminanz (0-255), unterhalb derer ein Frame als
+// "nahezu schwarz" gilt.
+const BLANK_LUMINANCE_THRESHOLD = 10;
+
+// Mittlere Pixeldifferenz zum vorherigen Frame, unterhalb
+// derer ein Frame als "unverändert" gilt.
+const BLANK_DIFF_THRESHOLD = 2;
+
+// Anzahl aufeinanderfolgender "leerer" Frames, bevor die
+// Analyse abgebrochen und der betroffene Bereich verworfen
+// wird.
+const BLANK_STREAK_LIMIT = 5;
 
 
 /*
@@ -499,10 +718,26 @@ const analysisCtx = analysisCanvas.getContext("2d", {
 
 let videoURL = null;
 let results = [];
-let previousFrame = null;
-let previousSampleTime = null;
 let isAnalyzing = false;
+let cancelRequested = false;
 let analysisStartTime = 0;
+
+
+/*
+  Zwei wiederverwendete Puffer für den "vorherigen Frame".
+
+  Statt bei jedem Frame ein neues Uint8ClampedArray zu
+  allozieren, wird abwechselnd in diese beiden Puffer
+  geschrieben.
+*/
+const FRAME_BUFFER_SIZE = ANALYSIS_WIDTH * ANALYSIS_HEIGHT * 4;
+const frameBuffers = [
+  new Uint8ClampedArray(FRAME_BUFFER_SIZE),
+  new Uint8ClampedArray(FRAME_BUFFER_SIZE)
+];
+
+let previousFrame = null;
+let nextBufferIndex = 0;
 
 
 /*
@@ -516,6 +751,21 @@ fileInput.addEventListener("change", () => {
   const file = fileInput.files[0];
 
   if (!file) {
+    return;
+  }
+
+  /*
+    Einfache Prüfung, ob überhaupt eine Videodatei
+    ausgewählt wurde.
+  */
+
+  if (file.type && !file.type.startsWith("video/")) {
+
+    statusEl.textContent =
+      "Bitte eine Videodatei auswählen.";
+
+    fileInput.value = "";
+
     return;
   }
 
@@ -543,6 +793,8 @@ fileInput.addEventListener("change", () => {
     '<span style="color:#777">Noch keine Analyse.</span>';
 
   results = [];
+  previousFrame = null;
+  nextBufferIndex = 0;
 
   drawEmptyChart();
 });
@@ -555,6 +807,10 @@ fileInput.addEventListener("change", () => {
 */
 
 clearBtn.addEventListener("click", () => {
+
+  if (isAnalyzing) {
+    return;
+  }
 
   if (videoURL) {
     URL.revokeObjectURL(videoURL);
@@ -572,7 +828,7 @@ clearBtn.addEventListener("click", () => {
 
   results = [];
   previousFrame = null;
-  previousSampleTime = null;
+  nextBufferIndex = 0;
 
   statusEl.textContent =
     "Noch kein Video ausgewählt.";
@@ -592,11 +848,31 @@ clearBtn.addEventListener("click", () => {
 
 /*
   ------------------------------------------------------------
-  Analyse starten
+  Analyse starten / abbrechen
+
+  Derselbe Button startet die Analyse und dient während
+  der Analyse als "Abbrechen"-Button.
   ------------------------------------------------------------
 */
 
 analyzeBtn.addEventListener("click", async () => {
+
+  /*
+    Läuft bereits eine Analyse -> Klick bedeutet "abbrechen".
+  */
+
+  if (isAnalyzing) {
+
+    cancelRequested = true;
+
+    analyzeBtn.disabled = true;
+
+    statusEl.textContent =
+      "Analyse wird abgebrochen …";
+
+    return;
+  }
+
 
   if (!video.duration || !isFinite(video.duration)) {
     statusEl.textContent =
@@ -604,19 +880,17 @@ analyzeBtn.addEventListener("click", async () => {
     return;
   }
 
-  if (isAnalyzing) {
-    return;
-  }
-
   isAnalyzing = true;
+  cancelRequested = false;
 
-  analyzeBtn.disabled = true;
+  analyzeBtn.textContent = "Abbrechen";
+  clearBtn.disabled = true;
 
-	analysisStartTime = performance.now();
+  analysisStartTime = performance.now();
 
   results = [];
   previousFrame = null;
-  previousSampleTime = null;
+  nextBufferIndex = 0;
 
   progressBar.style.width = "0%";
 
@@ -624,12 +898,11 @@ analyzeBtn.addEventListener("click", async () => {
     "Analyse wird vorbereitet …";
 
 
-
   try {
 
     await analyzeVideo();
 
-    finishAnalysis();
+    finishAnalysis(cancelRequested);
 
   } catch (error) {
 
@@ -641,11 +914,59 @@ analyzeBtn.addEventListener("click", async () => {
   } finally {
 
     isAnalyzing = false;
+    cancelRequested = false;
+
     analyzeBtn.disabled = false;
-    
-    
+    analyzeBtn.textContent = "Analyse starten";
+
+    clearBtn.disabled = false;
   }
 });
+
+
+/*
+  ------------------------------------------------------------
+  Tatsächlich nutzbare Videolänge ermitteln
+  ------------------------------------------------------------
+
+  video.duration ist bei manchen Dateien (z. B. bestimmte
+  Screen-Recordings oder Dateien mit variabler Framerate)
+  ungenau. video.seekable liefert die Zeitbereiche, die der
+  Browser tatsächlich ansteuern kann, und ist damit oft
+  verlässlicher. Ist ein kleinerer seekable-Endwert vorhanden,
+  wird dieser statt video.duration verwendet.
+  ------------------------------------------------------------
+*/
+
+function getEffectiveDuration() {
+
+  let effectiveDuration = video.duration;
+
+  try {
+
+    if (video.seekable && video.seekable.length > 0) {
+
+      const seekableEnd =
+        video.seekable.end(video.seekable.length - 1);
+
+      if (
+        isFinite(seekableEnd) &&
+        seekableEnd > 0 &&
+        seekableEnd < effectiveDuration
+      ) {
+
+        effectiveDuration = seekableEnd;
+      }
+    }
+
+  } catch (error) {
+
+    // video.seekable war nicht auswertbar - video.duration
+    // als Fallback beibehalten.
+  }
+
+  return effectiveDuration;
+}
 
 
 /*
@@ -655,10 +976,8 @@ analyzeBtn.addEventListener("click", async () => {
 */
 
 async function analyzeVideo() {
-  
 
-
-  const duration = video.duration;
+  const duration = getEffectiveDuration();
 
   /*
     Wir wählen die Anzahl der Samples anhand
@@ -666,7 +985,7 @@ async function analyzeVideo() {
 
     Beispiel:
 
-    20 Sekunden × 8 FPS = 160 Frames
+    20 Sekunden × 10 FPS = 200 Frames
   */
 
   const totalSamples =
@@ -676,39 +995,73 @@ async function analyzeVideo() {
     );
 
 
+  let lastActualTime = -1;
+  let stuckCount = 0;
+  let blankStreak = 0;
+
+
   for (let i = 0; i < totalSamples; i++) {
 
-    const time = i / SAMPLE_FPS;
-
-    // Stoppen, wenn das Ende des Videos erreicht ist
-    if (time >= duration) {
-      progressBar.style.width = "100%";
-      statusEl.textContent = "Analyse 100 %";
+    if (cancelRequested) {
       break;
     }
 
-    await seekVideo(time);
+    const targetTime = i / SAMPLE_FPS;
+
+    // Stoppen, wenn das Ende des Videos erreicht ist
+    if (targetTime >= duration) {
+      break;
+    }
+
+    await seekVideo(targetTime);
 
     /*
-      Tatsächlich erreichter Zeitpunkt nach dem Seek.
+      Statt der rein rechnerischen targetTime verwenden wir
+      die tatsächliche Position des Videos nach dem Seek.
 
-      Wichtig für die zeitnormalisierte Motion-Berechnung:
-      Das Seeking landet nicht immer exakt beim
-      angeforderten "time"-Wert.
+      Das ist wichtig, weil video.duration bei manchen Dateien
+      ungenau ist (z. B. Screen-Recordings, VFR-Videos). In dem
+      Fall würde die Fortschrittsanzeige sonst nicht stimmen.
     */
-    const actualTime = video.currentTime;
+
+    const time = video.currentTime;
+
+
+    /*
+      Wenn sich die Videoposition trotz Seek nicht mehr
+      nennenswert bewegt, haben wir das tatsächliche Ende
+      des Videos erreicht - auch wenn video.duration einen
+      größeren Wert behauptet. Ohne diese Prüfung würde immer
+      wieder derselbe letzte Frame analysiert werden, bis
+      totalSamples erreicht ist (ungefähr doppelt so lange
+      Analysezeit wie nötig).
+    */
+
+    if (time <= lastActualTime + 0.001) {
+
+      stuckCount++;
+
+      if (stuckCount >= STUCK_SAMPLES_LIMIT) {
+        break;
+      }
+
+    } else {
+
+      stuckCount = 0;
+    }
+
+    lastActualTime = time;
+
 
     /*
       Frame in kleines Canvas rendern.
+
+      Das Seitenverhältnis des Videos wird dabei beibehalten
+      (Letterboxing), damit die Statistikwerte nicht durch eine
+      Verzerrung des Bildes verfälscht werden.
     */
 
-    analysisCtx.drawImage(
-      video,
-      0,
-      0,
-      ANALYSIS_WIDTH,
-      ANALYSIS_HEIGHT
-    );
+    drawVideoFrameForAnalysis();
 
 
     const imageData =
@@ -721,63 +1074,118 @@ async function analyzeVideo() {
 
 
     /*
-      Farbkontrast
+      Tatsächlicher zeitlicher Abstand zum vorherigen Sample.
+
+      Wird für die zeitnormalisierte Bewegungsberechnung benötigt.
+      Die Zeit des vorherigen Samples steht bereits in "results"
+      zur Verfügung (das zuletzt hinzugefügte Element) - es wird
+      also keine zusätzliche Zeitquelle benötigt. Beim allerersten
+      Frame gibt es noch keinen vorherigen Eintrag; deltaTime
+      bleibt dann null (analyzeFrame liefert für diesen Fall
+      ohnehin motion = 0 zurück).
     */
 
-    const contrast =
-      calculateContrast(imageData);
+    const previousSampleTime =
+      results.length > 0
+        ? results[results.length - 1].time
+        : null;
+
+    const deltaTime =
+      previousSampleTime === null
+        ? null
+        : time - previousSampleTime;
 
 
     /*
-      Bewegung
-
-      deltaTime basiert auf den tatsächlich analysierten
-      Sample-Zeitpunkten (nicht auf 1 / SAMPLE_FPS),
-      damit die Motion-Berechnung unabhängig von der
-      eingestellten Sample-FPS bleibt.
+      Farbkontrast, Bewegung und Schnittscore werden in einem
+      gemeinsamen Pixel-Durchlauf berechnet statt in drei
+      getrennten Schleifen.
     */
 
-    const motion =
-      calculateMotion(imageData, actualTime);
-
-
-    /*
-      Schnitt
-    */
-
-    const cutScore =
-      calculateCutScore(
-        imageData,
-        contrast,
-        motion
+    const frame =
+      analyzeFrame(
+        imageData.data,
+        previousFrame,
+        deltaTime
       );
 
 
     results.push({
       time,
-      contrast,
-      motion,
-      cutScore
+      contrast: frame.contrast,
+      motion: frame.motion,
+      cutScore: frame.cutScore
     });
 
 
     /*
-      Aktuelles Frame und Zeitpunkt
-      für nächsten Vergleich speichern.
+      Inhaltsbasierte Endeerkennung.
+
+      Ein Frame gilt als "leer", wenn er nahezu schwarz ist
+      und sich praktisch nicht vom vorherigen Frame
+      unterscheidet. previousFrame ist beim allerersten Frame
+      noch null - in dem Fall wird nicht gewertet, da noch
+      kein Vergleich möglich ist.
     */
 
-    previousFrame =
-      new Uint8ClampedArray(imageData.data);
+    const isBlankFrame =
+      previousFrame !== null &&
+      frame.meanLuminance < BLANK_LUMINANCE_THRESHOLD &&
+      frame.pixelDiff < BLANK_DIFF_THRESHOLD;
 
-    previousSampleTime =
-      actualTime;
+    if (isBlankFrame) {
+
+      blankStreak++;
+
+    } else {
+
+      blankStreak = 0;
+    }
+
+
+    /*
+      Aktuelles Frame für den nächsten Vergleich speichern.
+
+      Statt jedes Mal ein neues Array zu allozieren, wird
+      abwechselnd in einen von zwei wiederverwendeten Puffern
+      geschrieben.
+    */
+
+    const buffer = frameBuffers[nextBufferIndex];
+    buffer.set(imageData.data);
+    previousFrame = buffer;
+    nextBufferIndex = 1 - nextBufferIndex;
+
+
+    if (blankStreak >= BLANK_STREAK_LIMIT) {
+
+      /*
+        Die letzten blankStreak Frames waren schwarz und
+        unverändert - das ist kein echter Videoinhalt,
+        sondern das Resultat eines Seeks über das
+        tatsächliche Ende hinaus. Diese Frames werden aus
+        dem Ergebnis entfernt, bevor die Analyse beendet
+        wird.
+      */
+
+      results.splice(
+        results.length - blankStreak,
+        blankStreak
+      );
+
+      break;
+    }
 
 
     /*
       Fortschrittsanzeige.
+
+      Basierend auf der Anzahl der Samples statt auf
+      time / duration, damit eine ungenaue video.duration
+      die Anzeige nicht verfälscht.
     */
 
-    const progress = Math.min(100, (time / duration) * 100);
+    const progress = Math.min(100, ((i + 1) / totalSamples) * 100);
 
     progressBar.style.width = progress.toFixed(1) + "%";
     statusEl.textContent = `Analyse ${Math.round(progress)} %`;
@@ -794,6 +1202,62 @@ async function analyzeVideo() {
       await nextFrame();
     }
   }
+
+  if (!cancelRequested) {
+    progressBar.style.width = "100%";
+    statusEl.textContent = "Analyse 100 %";
+  }
+}
+
+
+/*
+  ------------------------------------------------------------
+  Frame in das Analyse-Canvas zeichnen
+
+  Das Video wird unter Beibehaltung seines Seitenverhältnisses
+  in die feste Analyseauflösung eingepasst (Letterboxing /
+  Pillarboxing), statt es zu strecken. Nicht abgedeckte Ränder
+  werden schwarz gefüllt.
+  ------------------------------------------------------------
+*/
+
+function drawVideoFrameForAnalysis() {
+
+  const videoWidth = video.videoWidth || ANALYSIS_WIDTH;
+  const videoHeight = video.videoHeight || ANALYSIS_HEIGHT;
+
+  const canvasAspect = ANALYSIS_WIDTH / ANALYSIS_HEIGHT;
+  const videoAspect = videoWidth / videoHeight;
+
+  let drawWidth;
+  let drawHeight;
+
+  if (videoAspect > canvasAspect) {
+
+    // Video ist relativ breiter als die Analyseauflösung.
+    drawWidth = ANALYSIS_WIDTH;
+    drawHeight = ANALYSIS_WIDTH / videoAspect;
+
+  } else {
+
+    // Video ist relativ höher (oder gleiches Verhältnis).
+    drawHeight = ANALYSIS_HEIGHT;
+    drawWidth = ANALYSIS_HEIGHT * videoAspect;
+  }
+
+  const offsetX = (ANALYSIS_WIDTH - drawWidth) / 2;
+  const offsetY = (ANALYSIS_HEIGHT - drawHeight) / 2;
+
+  analysisCtx.fillStyle = "#000";
+  analysisCtx.fillRect(0, 0, ANALYSIS_WIDTH, ANALYSIS_HEIGHT);
+
+  analysisCtx.drawImage(
+    video,
+    offsetX,
+    offsetY,
+    drawWidth,
+    drawHeight
+  );
 }
 
 
@@ -803,27 +1267,53 @@ async function analyzeVideo() {
   ------------------------------------------------------------
 */
 
-function seekVideo(time) {
+function seekVideo(time, timeoutMs = SEEK_TIMEOUT_MS) {
 
   return new Promise((resolve, reject) => {
 
+    let settled = false;
+
     const onSeeked = () => {
 
+      if (settled) {
+        return;
+      }
+
+      settled = true;
       cleanup();
       resolve();
-
     };
 
     const onError = () => {
 
+      if (settled) {
+        return;
+      }
+
+      settled = true;
       cleanup();
       reject(
         new Error("Video konnte nicht gelesen werden.")
       );
-
     };
 
+    const timeoutId = setTimeout(() => {
+
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      cleanup();
+      reject(
+        new Error("Zeitüberschreitung beim Springen im Video.")
+      );
+
+    }, timeoutMs);
+
     function cleanup() {
+
+      clearTimeout(timeoutId);
 
       video.removeEventListener(
         "seeked",
@@ -834,7 +1324,6 @@ function seekVideo(time) {
         "error",
         onError
       );
-
     }
 
     video.addEventListener(
@@ -858,33 +1347,33 @@ function seekVideo(time) {
 
 /*
   ------------------------------------------------------------
-  Farbkontrast
-  ------------------------------------------------------------
+  Frame-Analyse: Farbkontrast, Bewegung und Schnittscore
 
-  Wir berechnen zunächst die Luminanz jedes Pixels.
+  Alle drei Werte werden in einem gemeinsamen Durchlauf über
+  die Pixel berechnet (statt in drei getrennten Schleifen wie
+  zuvor). Die verwendeten Formeln sind unverändert:
 
-  Danach:
-
-  Kontrast =
-  Standardabweichung der Helligkeitswerte
-
-  Hohe Standardabweichung =
-  helle UND dunkle Bereiche vorhanden.
-
-  Danach wird auf 0–100 normalisiert.
+  - Kontrast = normalisierte Standardabweichung der Luminanz
+    (Varianz wird einstufig über E[X²] − E[X]² bestimmt).
+  - Bewegung = normalisierte mittlere Luminanzdifferenz zum
+    vorherigen Frame.
+  - Schnittscore = gewichtete Kombination aus mittlerer
+    RGB-Differenz zum vorherigen Frame und der Bewegung.
   ------------------------------------------------------------
 */
 
-function calculateContrast(imageData) {
+function analyzeFrame(data, previousData, deltaTime) {
 
-  const data = imageData.data;
+  const hasPrevious = !!previousData;
 
-  let sum = 0;
+  let lumSum = 0;
+  let lumSumSq = 0;
+
+  let motionDiffSum = 0;
+  let cutDiffSum = 0;
+
   let count = 0;
 
-  /*
-    Luminanzen sammeln.
-  */
 
   for (let i = 0; i < data.length; i += 4) {
 
@@ -897,269 +1386,143 @@ function calculateContrast(imageData) {
       0.7152 * g +
       0.0722 * b;
 
-    sum += luminance;
+    lumSum += luminance;
+    lumSumSq += luminance * luminance;
 
     count++;
-  }
 
-  const mean =
-    sum / count;
+
+    if (hasPrevious) {
+
+      const pr = previousData[i];
+      const pg = previousData[i + 1];
+      const pb = previousData[i + 2];
+
+      const previousLuminance =
+        0.2126 * pr +
+        0.7152 * pg +
+        0.0722 * pb;
+
+      motionDiffSum +=
+        Math.abs(luminance - previousLuminance);
+
+      cutDiffSum +=
+        (
+          Math.abs(r - pr) +
+          Math.abs(g - pg) +
+          Math.abs(b - pb)
+        ) / 3;
+    }
+  }
 
 
   /*
-    Varianz.
-  */
+    Farbkontrast.
 
-  let variance = 0;
-
-  for (let i = 0; i < data.length; i += 4) {
-
-    const r = data[i];
-    const g = data[i + 1];
-    const b = data[i + 2];
-
-    const luminance =
-      0.2126 * r +
-      0.7152 * g +
-      0.0722 * b;
-
-    const diff =
-      luminance - mean;
-
-    variance += diff * diff;
-  }
-
-  variance /= count;
-
-  const std =
-    Math.sqrt(variance);
-
-
-  /*
     Typische Werte liegen grob zwischen 0 und 100.
-
     64 wird hier als sehr hoher Kontrast angenommen.
   */
 
-  return clamp(
-    (std / 64) * 100,
-    0,
-    100
-  );
-}
+  const mean = lumSum / count;
+
+  const variance =
+    Math.max(0, (lumSumSq / count) - (mean * mean));
+
+  const std = Math.sqrt(variance);
+
+  const contrast =
+    clamp((std / 64) * 100, 0, 100);
 
 
-/*
-  ------------------------------------------------------------
-  Bewegung
-  ------------------------------------------------------------
+  if (!hasPrevious) {
 
-  Wir vergleichen jeden Pixel mit dem vorherigen Frame.
-
-  Je größer die durchschnittliche Differenz,
-  desto höher die Bewegung.
-  ------------------------------------------------------------
-*/
-
-/*
-  Zeitnormalisierung der Motion-Berechnung.
-
-  Die alte Skalierung ("averageDifference / 25 * 100")
-  ging implizit von einem Sample-Abstand von
-  1 / SAMPLE_FPS (Standard: 1/30 s) aus.
-
-  25 Helligkeitsstufen Unterschied bei ~1/30 s Abstand
-  entsprechen also einer Änderungsrate von
-  25 * 30 = 750 Helligkeitsstufen pro Sekunde.
-
-  Damit der Motion-Wert bei der bisherigen
-  Standard-Sample-Rate (30 FPS) unverändert bleibt,
-  aber unabhängig von der tatsächlich gewählten
-  Sample-FPS vergleichbar ist, wird jetzt die
-  Änderungsrate pro Sekunde gegen diesen Referenzwert
-  normalisiert.
-*/
-const MOTION_RATE_REFERENCE = 25 * SAMPLE_FPS; // 750 Helligkeitsstufen/Sekunde ≈ "sehr starke Bewegung"
-
-/*
-  Untergrenze für deltaTime, um Division durch 0 bzw.
-  unrealistisch hohe Ausreißer bei extrem kleinen oder
-  identischen Sample-Zeitpunkten zu verhindern
-  (z. B. wenn das Seeking zweimal denselben Frame liefert).
-*/
-const MIN_DELTA_TIME = 0.001;
-
-
-function calculateMotion(imageData, currentTime) {
-
-  if (!previousFrame || previousSampleTime === null) {
-    return 0;
+    return {
+      contrast,
+      motion: 0,
+      cutScore: 0,
+      meanLuminance: mean,
+      pixelDiff: 0
+    };
   }
-
-  const rawDeltaTime =
-    currentTime - previousSampleTime;
-
-  const deltaTime =
-    Math.max(rawDeltaTime, MIN_DELTA_TIME);
-
-  const current =
-    imageData.data;
-
-  let totalDifference = 0;
-
-  let count = 0;
-
-
-  for (let i = 0; i < current.length; i += 4) {
-
-    /*
-      Nur Helligkeit vergleichen.
-
-      Das ist günstiger als RGB komplett zu vergleichen.
-    */
-
-    const currentLum =
-      0.2126 * current[i] +
-      0.7152 * current[i + 1] +
-      0.0722 * current[i + 2];
-
-
-    const previousLum =
-      0.2126 * previousFrame[i] +
-      0.7152 * previousFrame[i + 1] +
-      0.0722 * previousFrame[i + 2];
-
-
-    totalDifference +=
-      Math.abs(
-        currentLum - previousLum
-      );
-
-    count++;
-  }
-
-
-  const averageDifference =
-    totalDifference / count;
 
 
   /*
-    Änderungsrate pro Sekunde statt pro Frame.
+    Bewegung - roh, pro Sample-Schritt (nicht zeitnormalisiert).
 
-    Dadurch liefert eine gleichmäßige Bewegung im Video
-    unabhängig von der Sample-FPS einen vergleichbaren
-    Motion-Wert.
+    25 Helligkeitsstufen Unterschied zwischen zwei Samples wurden
+    bisher als sehr starke Bewegung betrachtet. Dieser Rohwert ist
+    von SAMPLE_FPS abhängig und wird deshalb NICHT mehr als
+    eigentlicher Motion-Wert verwendet. Er bleibt hier unverändert
+    erhalten und wird ausschließlich für den Schnittscore weiter
+    unten verwendet, damit sich die Schnitterkennung durch die
+    neue Motion-Skalierung nicht verändert.
   */
+
+  const averageMotionDifference =
+    motionDiffSum / count;
+
+  const motionForCutScore =
+    clamp((averageMotionDifference / 25) * 100, 0, 100);
+
+
+  /*
+    Bewegung - zeitnormalisiert (für Anzeige, Durchschnitt und
+    Chart).
+
+    Damit der Motion-Wert unabhängig von der eingestellten
+    SAMPLE_FPS vergleichbar bleibt, wird die Helligkeitsdifferenz
+    durch die tatsächlich vergangene Zeit zum vorherigen Sample
+    geteilt ("Helligkeitsänderung pro Sekunde"). deltaTime wird
+    dabei nach unten begrenzt, um eine Division durch 0 bzw.
+    unrealistische Ausreißer bei sehr kleinen oder negativen
+    Zeitabständen zu verhindern.
+  */
+
+  const safeDeltaTime =
+    Math.max(deltaTime || 0, MOTION_MIN_DELTA_TIME);
 
   const motionRate =
-    averageDifference / deltaTime;
+    averageMotionDifference / safeDeltaTime;
 
-
-  return clamp(
-    (motionRate / MOTION_RATE_REFERENCE) * 100,
-    0,
-    100
-  );
-}
-
-
-/*
-  ------------------------------------------------------------
-  Schnittanalyse
-  ------------------------------------------------------------
-
-  Ein Schnitt verursacht häufig:
-
-  - starke Pixeländerung
-  - Histogrammänderung
-  - deutliche Helligkeitsänderung
-
-  Wir verwenden hier Pixeländerung + Kontrast.
-  ------------------------------------------------------------
-*/
-
-function calculateCutScore(
-  imageData,
-  contrast,
-  motion
-) {
-
-  if (!previousFrame) {
-    return 0;
-  }
-
-  const current =
-    imageData.data;
-
-  let totalDifference = 0;
-
-  let count = 0;
-
-
-  for (let i = 0; i < current.length; i += 4) {
-
-    const r1 = current[i];
-    const g1 = current[i + 1];
-    const b1 = current[i + 2];
-
-    const r2 = previousFrame[i];
-    const g2 = previousFrame[i + 1];
-    const b2 = previousFrame[i + 2];
-
-
-    /*
-      Farbunterschied.
-    */
-
-    const difference =
-      (
-        Math.abs(r1 - r2) +
-        Math.abs(g1 - g2) +
-        Math.abs(b1 - b2)
-      ) / 3;
-
-
-    totalDifference +=
-      difference;
-
-    count++;
-  }
-
-
-  const averageDifference =
-    totalDifference / count;
+  const motion =
+    clamp((motionRate / MOTION_RATE_FOR_MAX_SCORE) * 100, 0, 100);
 
 
   /*
+    Schnittscore.
+
     50 durchschnittliche RGB-Stufen
     entsprechen einem sehr starken Unterschied.
+
+    Bewegung alleine soll keinen Schnitt erzeugen, deshalb
+    wird der visuelle Sprung stärker gewichtet als die
+    Bewegung. Hier wird bewusst weiterhin motionForCutScore (die
+    bisherige, nicht zeitnormalisierte Bewegung) verwendet, damit
+    sich die Schnitterkennung durch die neue Motion-Skalierung
+    nicht verändert.
   */
 
+  const averageCutDifference =
+    cutDiffSum / count;
+
   const pixelScore =
+    clamp((averageCutDifference / 50) * 100, 0, 100);
+
+  const cutScore =
     clamp(
-      (averageDifference / 50) * 100,
+      pixelScore * 0.85 + Math.min(motionForCutScore, 70) * 0.15,
       0,
       100
     );
 
 
-  /*
-    Bewegung alleine soll keinen Schnitt erzeugen.
-
-    Wir gewichten deshalb den visuellen Sprung
-    stärker als die Bewegung.
-  */
-
-  const score =
-    pixelScore * 0.85 +
-    Math.min(motion, 70) * 0.15;
-
-
-  return clamp(
-    score,
-    0,
-    100
-  );
+  return {
+    contrast,
+    motion,
+    cutScore,
+    meanLuminance: mean,
+    pixelDiff: averageCutDifference
+  };
 }
 
 
@@ -1169,9 +1532,14 @@ function calculateCutScore(
   ------------------------------------------------------------
 */
 
-function finishAnalysis() {
+function finishAnalysis(wasCancelled) {
 
   if (!results.length) {
+
+    if (wasCancelled) {
+      statusEl.textContent = "Analyse abgebrochen.";
+    }
+
     return;
   }
 
@@ -1213,14 +1581,21 @@ function finishAnalysis() {
   renderCutList(cuts);
 
   drawChart(results, cuts);
-  
-  
-
 
 
   const analysisTime = (performance.now() - analysisStartTime) / 1000;
+  const formattedTime = analysisTime.toFixed(1).replace(".", ",");
 
-	statusEl.textContent = `Analyse abgeschlossen · ${results.length} Frames untersucht. Analysezeit: ${analysisTime.toFixed(1).replace(".", ",")} Sekunden`;
+  if (wasCancelled) {
+
+    statusEl.textContent =
+      `Analyse abgebrochen · ${results.length} Frames untersucht. Dauer: ${formattedTime} Sekunden`;
+
+  } else {
+
+    statusEl.textContent =
+      `Analyse abgeschlossen · ${results.length} Frames untersucht. Analysezeit: ${formattedTime} Sekunden`;
+  }
 }
 
 
