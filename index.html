@@ -178,7 +178,7 @@
 
     .metrics {
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
         gap: 10px;
 
         margin-bottom: 20px;
@@ -206,6 +206,16 @@
         font-size: 28px;
         font-weight: 700;
         line-height: 1.2;
+
+        overflow-wrap: anywhere;
+    }
+
+    .metric-raw {
+        margin-top: 4px;
+
+        color: #777;
+        font-size: 12px;
+        line-height: 1.4;
 
         overflow-wrap: anywhere;
     }
@@ -449,6 +459,14 @@
     <button id="clearBtn" disabled>
       Zurücksetzen
     </button>
+
+    <button id="exportFramesBtn" disabled>
+      CSV: Einzelbilder
+    </button>
+
+    <button id="exportSummaryBtn" disabled>
+      CSV: Zusammenfassung
+    </button>
   </div>
 
   <div class="status" id="status" role="status" aria-live="polite" aria-atomic="true">
@@ -465,16 +483,24 @@
     <div class="metric">
       <div class="metric-label">Ø Farbkontrast</div>
       <div class="metric-value" id="avgContrast" style="color: #4CAF50">–</div>
+      <div class="metric-raw" id="avgContrastRaw">Rohwert (σ Luminanz): –</div>
     </div>
 
     <div class="metric">
       <div class="metric-label">Ø Bewegung</div>
       <div class="metric-value" id="avgMotion" style="color: #2196F3">–</div>
+      <div class="metric-raw" id="avgMotionRaw">Rohwert (Helligkeit/s): –</div>
     </div>
 
     <div class="metric">
       <div class="metric-label">Schnitte</div>
       <div class="metric-value" id="cutCount" style="color: #FF5252">–</div>
+    </div>
+
+    <div class="metric">
+      <div class="metric-label">Ø Schnitt-Rohwert</div>
+      <div class="metric-value" id="avgCutDiffRaw" style="color: #FF5252">–</div>
+      <div class="metric-raw" id="avgCutScoreNorm">Norm. Score: –</div>
     </div>
 
   </div>
@@ -583,13 +609,19 @@ const fileInput = document.getElementById("fileInput");
 const video = document.getElementById("video");
 const analyzeBtn = document.getElementById("analyzeBtn");
 const clearBtn = document.getElementById("clearBtn");
+const exportFramesBtn = document.getElementById("exportFramesBtn");
+const exportSummaryBtn = document.getElementById("exportSummaryBtn");
 
 const statusEl = document.getElementById("status");
 const progressBar = document.getElementById("progressBar");
 
 const avgContrastEl = document.getElementById("avgContrast");
+const avgContrastRawEl = document.getElementById("avgContrastRaw");
 const avgMotionEl = document.getElementById("avgMotion");
+const avgMotionRawEl = document.getElementById("avgMotionRaw");
 const cutCountEl = document.getElementById("cutCount");
+const avgCutDiffRawEl = document.getElementById("avgCutDiffRaw");
+const avgCutScoreNormEl = document.getElementById("avgCutScoreNorm");
 const cutListEl = document.getElementById("cutList");
 
 const chart = document.getElementById("chart");
@@ -653,10 +685,9 @@ const SAMPLE_FPS = 10;
     motion = motionRate / (25 * SAMPLE_FPS) * 100
            = avgDiff / 25 * 100   <- SAMPLE_FPS kürzt sich weg!
 
-  Die Zeitnormalisierung hätte dann überhaupt keine Wirkung mehr
-  (das war der ursprüngliche Fehler). Mit einem fixen Referenzwert
-  bleibt die Normalisierung unabhängig davon, welche SAMPLE_FPS
-  gerade eingestellt ist.
+  Die Zeitnormalisierung hätte dann überhaupt keine Wirkung mehr.
+  Mit einem fixen Referenzwert bleibt die Normalisierung
+  unabhängig davon, welche SAMPLE_FPS gerade eingestellt ist.
 */
 const MOTION_REFERENCE_FPS = 10;
 const MOTION_RATE_FOR_MAX_SCORE = 25 * MOTION_REFERENCE_FPS;
@@ -736,6 +767,8 @@ let results = [];
 let isAnalyzing = false;
 let cancelRequested = false;
 let analysisStartTime = 0;
+let currentFileName = "";
+let lastSummary = null;
 
 
 /*
@@ -792,8 +825,13 @@ fileInput.addEventListener("change", () => {
 
   video.src = videoURL;
 
+  currentFileName = file.name;
+  lastSummary = null;
+
   analyzeBtn.disabled = false;
   clearBtn.disabled = false;
+  exportFramesBtn.disabled = true;
+  exportSummaryBtn.disabled = true;
 
   statusEl.textContent =
     `${file.name} · ${(file.size / 1024 / 1024).toFixed(1)} MB`;
@@ -801,8 +839,12 @@ fileInput.addEventListener("change", () => {
   progressBar.style.width = "0%";
 
   avgContrastEl.textContent = "–";
+  avgContrastRawEl.textContent = "Rohwert (σ Luminanz): –";
   avgMotionEl.textContent = "–";
+  avgMotionRawEl.textContent = "Rohwert (Helligkeit/s): –";
   cutCountEl.textContent = "–";
+  avgCutDiffRawEl.textContent = "–";
+  avgCutScoreNormEl.textContent = "Norm. Score: –";
 
   cutListEl.innerHTML =
     '<span style="color:#777">Noch keine Analyse.</span>';
@@ -840,10 +882,15 @@ clearBtn.addEventListener("click", () => {
 
   analyzeBtn.disabled = true;
   clearBtn.disabled = true;
+  exportFramesBtn.disabled = true;
+  exportSummaryBtn.disabled = true;
 
   results = [];
   previousFrame = null;
   nextBufferIndex = 0;
+
+  currentFileName = "";
+  lastSummary = null;
 
   statusEl.textContent =
     "Noch kein Video ausgewählt.";
@@ -851,8 +898,12 @@ clearBtn.addEventListener("click", () => {
   progressBar.style.width = "0%";
 
   avgContrastEl.textContent = "–";
+  avgContrastRawEl.textContent = "Rohwert (σ Luminanz): –";
   avgMotionEl.textContent = "–";
+  avgMotionRawEl.textContent = "Rohwert (Helligkeit/s): –";
   cutCountEl.textContent = "–";
+  avgCutDiffRawEl.textContent = "–";
+  avgCutScoreNormEl.textContent = "Norm. Score: –";
 
   cutListEl.innerHTML =
     '<span style="color:#777">Noch keine Analyse.</span>';
@@ -900,6 +951,8 @@ analyzeBtn.addEventListener("click", async () => {
 
   analyzeBtn.textContent = "Abbrechen";
   clearBtn.disabled = true;
+  exportFramesBtn.disabled = true;
+  exportSummaryBtn.disabled = true;
 
   analysisStartTime = performance.now();
 
@@ -1128,8 +1181,11 @@ async function analyzeVideo() {
     results.push({
       time,
       contrast: frame.contrast,
+      contrastRaw: frame.contrastRaw,
       motion: frame.motion,
-      cutScore: frame.cutScore
+      motionRaw: frame.motionRaw,
+      cutScore: frame.cutScore,
+      cutDiffRaw: frame.cutDiffRaw
     });
 
 
@@ -1453,8 +1509,11 @@ function analyzeFrame(data, previousData, deltaTime) {
 
     return {
       contrast,
+      contrastRaw: std,
       motion: 0,
+      motionRaw: 0,
       cutScore: 0,
+      cutDiffRaw: 0,
       meanLuminance: mean,
       pixelDiff: 0
     };
@@ -1481,26 +1540,26 @@ function analyzeFrame(data, previousData, deltaTime) {
 
 
   /*
-    Bewegung - zeitnormalisiert (für Anzeige, Durchschnitt und
-    Chart).
+    Bewegung - zeitnormalisiert (0-100, für Chart/Kachel) und roh
+    (für die wissenschaftliche Auswertung, z. B. CSV-Export).
 
     Damit der Motion-Wert unabhängig von der eingestellten
     SAMPLE_FPS vergleichbar bleibt, wird die Helligkeitsdifferenz
     durch die tatsächlich vergangene Zeit zum vorherigen Sample
-    geteilt ("Helligkeitsänderung pro Sekunde"). deltaTime wird
-    dabei nach unten begrenzt, um eine Division durch 0 bzw.
-    unrealistische Ausreißer bei sehr kleinen oder negativen
-    Zeitabständen zu verhindern.
+    geteilt ("Helligkeitsänderung pro Sekunde" = motionRaw).
+    deltaTime wird dabei nach unten begrenzt, um eine Division
+    durch 0 bzw. unrealistische Ausreißer bei sehr kleinen oder
+    negativen Zeitabständen zu verhindern.
   */
 
   const safeDeltaTime =
     Math.max(deltaTime || 0, MOTION_MIN_DELTA_TIME);
 
-  const motionRate =
+  const motionRaw =
     averageMotionDifference / safeDeltaTime;
 
   const motion =
-    clamp((motionRate / MOTION_RATE_FOR_MAX_SCORE) * 100, 0, 100);
+    clamp((motionRaw / MOTION_RATE_FOR_MAX_SCORE) * 100, 0, 100);
 
 
   /*
@@ -1533,8 +1592,11 @@ function analyzeFrame(data, previousData, deltaTime) {
 
   return {
     contrast,
+    contrastRaw: std,
     motion,
+    motionRaw,
     cutScore,
+    cutDiffRaw: averageCutDifference,
     meanLuminance: mean,
     pixelDiff: averageCutDifference
   };
@@ -1561,6 +1623,12 @@ function finishAnalysis(wasCancelled) {
 
   /*
     Durchschnittswerte.
+
+    Neben den kalibrierten 0-100-Werten (für Kacheln/Chart wie
+    bisher) werden zusätzlich die unnormierten Rohwerte
+    berechnet. Diese sind für eine eigene wissenschaftliche
+    Normierung gedacht (siehe CSV-Export) und unterliegen keiner
+    festen Referenzgröße oder Klemmung auf 0-100.
   */
 
   const avgContrast =
@@ -1568,17 +1636,49 @@ function finishAnalysis(wasCancelled) {
       results.map(r => r.contrast)
     );
 
+  const avgContrastRaw =
+    average(
+      results.map(r => r.contrastRaw)
+    );
+
   const avgMotion =
     average(
       results.map(r => r.motion)
+    );
+
+  const avgMotionRaw =
+    average(
+      results.map(r => r.motionRaw)
+    );
+
+  const avgCutDiffRaw =
+    average(
+      results.map(r => r.cutDiffRaw)
+    );
+
+  const avgCutScoreNorm =
+    average(
+      results.map(r => r.cutScore)
     );
 
 
   avgContrastEl.textContent =
     Math.round(avgContrast);
 
+  avgContrastRawEl.textContent =
+    `Rohwert (σ Luminanz): ${formatDecimal(avgContrastRaw)}`;
+
   avgMotionEl.textContent =
     Math.round(avgMotion);
+
+  avgMotionRawEl.textContent =
+    `Rohwert (Helligkeit/s): ${formatDecimal(avgMotionRaw)}`;
+
+  avgCutDiffRawEl.textContent =
+    formatDecimal(avgCutDiffRaw);
+
+  avgCutScoreNormEl.textContent =
+    `Norm. Score: ${Math.round(avgCutScoreNorm)}`;
 
 
   /*
@@ -1597,9 +1697,29 @@ function finishAnalysis(wasCancelled) {
 
   drawChart(results, cuts);
 
+  exportFramesBtn.disabled = false;
+  exportSummaryBtn.disabled = false;
+
 
   const analysisTime = (performance.now() - analysisStartTime) / 1000;
   const formattedTime = analysisTime.toFixed(1).replace(".", ",");
+
+  lastSummary = {
+    fileName: currentFileName,
+    frameCount: results.length,
+    sampleFps: SAMPLE_FPS,
+    analysisWidth: ANALYSIS_WIDTH,
+    analysisHeight: ANALYSIS_HEIGHT,
+    avgContrast,
+    avgContrastRaw,
+    avgMotion,
+    avgMotionRaw,
+    avgCutDiffRaw,
+    avgCutScoreNorm,
+    cutCount: cuts.length,
+    analysisTimeSeconds: analysisTime,
+    wasCancelled
+  };
 
   if (wasCancelled) {
 
@@ -1682,7 +1802,8 @@ function detectCuts(data) {
 
       cuts.push({
         time: current.time,
-        score: current.cutScore
+        score: current.cutScore,
+        diffRaw: current.cutDiffRaw
       });
 
       lastCutTime =
@@ -1725,7 +1846,7 @@ function renderCutList(cuts) {
 
 
     element.textContent =
-      `${formatTime(cut.time)} · ${Math.round(cut.score)}%`;
+      `${formatTime(cut.time)} · ${Math.round(cut.score)}% · Δ${formatDecimal(cut.diffRaw)}`;
 
 
     /*
@@ -2081,6 +2202,24 @@ function formatTime(seconds) {
 }
 
 
+/*
+  Zahl im deutschen Format (Komma statt Punkt) formatieren.
+
+  Wird sowohl für die Kachel-Anzeige (weniger Nachkommastellen)
+  als auch für den CSV-Export (mehr Nachkommastellen, für die
+  wissenschaftliche Weiterverarbeitung) verwendet.
+*/
+
+function formatDecimal(value, digits = 1) {
+
+  if (typeof value !== "number" || !isFinite(value)) {
+    return "–";
+  }
+
+  return value.toFixed(digits).replace(".", ",");
+}
+
+
 function nextFrame() {
 
   return new Promise(resolve => {
@@ -2103,6 +2242,150 @@ function nextFrame() {
 
   });
 }
+
+
+/*
+  ------------------------------------------------------------
+  CSV-Export
+  ------------------------------------------------------------
+
+  Zwei getrennte Dateien:
+
+  - Einzelbilder: eine Zeile pro analysiertem Frame mit sowohl
+    den Rohwerten (unnormiert, für eigene Auswertung/Normierung)
+    als auch den in der App verwendeten kalibrierten 0-100-Werten.
+  - Zusammenfassung: Kennzahlen zur gesamten Analyse (Mittelwerte,
+    Anzahl Schnitte, verwendete Einstellungen).
+
+  Format: Semikolon als Trennzeichen, Komma als Dezimaltrennzeichen
+  (deutsches Excel-CSV-Format). Ein BOM wird vorangestellt, damit
+  Umlaute in Excel korrekt als UTF-8 erkannt werden.
+  ------------------------------------------------------------
+*/
+
+function buildFramesCsv() {
+
+  if (!results.length) {
+    return null;
+  }
+
+  /*
+    Cuts werden hier erneut über detectCuts() ermittelt statt
+    zusätzlich zwischengespeichert zu werden. detectCuts() ist
+    eine reine Funktion von "results", das Ergebnis ist also
+    identisch zu dem, was zuletzt in der App angezeigt wurde.
+  */
+
+  const cuts = detectCuts(results);
+  const cutTimes = new Set(cuts.map(cut => cut.time));
+
+  const header = [
+    "Zeit_s",
+    "Kontrast_roh_sigma",
+    "Kontrast_norm_0_100",
+    "Bewegung_roh_Helligkeit_pro_s",
+    "Bewegung_norm_0_100",
+    "SchnittIntensitaet_roh_deltaRGB",
+    "SchnittScore_norm_0_100",
+    "IstSchnitt"
+  ].join(";");
+
+  const rows = results.map(r => [
+    formatDecimal(r.time, 3),
+    formatDecimal(r.contrastRaw, 3),
+    formatDecimal(r.contrast, 2),
+    formatDecimal(r.motionRaw, 3),
+    formatDecimal(r.motion, 2),
+    formatDecimal(r.cutDiffRaw, 3),
+    formatDecimal(r.cutScore, 2),
+    cutTimes.has(r.time) ? 1 : 0
+  ].join(";"));
+
+  return [header, ...rows].join("\r\n");
+}
+
+
+function buildSummaryCsv() {
+
+  if (!lastSummary) {
+    return null;
+  }
+
+  const rows = [
+    ["Kennzahl", "Wert"],
+    ["Dateiname", lastSummary.fileName || "-"],
+    ["Sample_FPS", lastSummary.sampleFps],
+    ["Analyseaufloesung_px", `${lastSummary.analysisWidth}x${lastSummary.analysisHeight}`],
+    ["Anzahl_Frames", lastSummary.frameCount],
+    ["Anzahl_Schnitte", lastSummary.cutCount],
+    ["Analyse_abgebrochen", lastSummary.wasCancelled ? "ja" : "nein"],
+    ["Analysezeit_s", formatDecimal(lastSummary.analysisTimeSeconds, 1)],
+    ["Kontrast_roh_sigma_Mittelwert", formatDecimal(lastSummary.avgContrastRaw, 3)],
+    ["Kontrast_norm_0_100_Mittelwert", formatDecimal(lastSummary.avgContrast, 2)],
+    ["Bewegung_roh_Helligkeit_pro_s_Mittelwert", formatDecimal(lastSummary.avgMotionRaw, 3)],
+    ["Bewegung_norm_0_100_Mittelwert", formatDecimal(lastSummary.avgMotion, 2)],
+    ["SchnittIntensitaet_roh_deltaRGB_Mittelwert", formatDecimal(lastSummary.avgCutDiffRaw, 3)],
+    ["SchnittScore_norm_0_100_Mittelwert", formatDecimal(lastSummary.avgCutScoreNorm, 2)]
+  ];
+
+  return rows.map(cols => cols.join(";")).join("\r\n");
+}
+
+
+function sanitizeFileNameBase() {
+
+  const base =
+    currentFileName
+      ? currentFileName.replace(/\.[^/.]+$/, "")
+      : "videoanalyse";
+
+  return base.replace(/[^a-z0-9_-]+/gi, "_");
+}
+
+
+function downloadCsv(content, filename) {
+
+  if (content === null) {
+    return;
+  }
+
+  const blob =
+    new Blob(["\uFEFF" + content], { type: "text/csv;charset=utf-8;" });
+
+  const url = URL.createObjectURL(blob);
+
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+
+  URL.revokeObjectURL(url);
+}
+
+
+exportFramesBtn.addEventListener("click", () => {
+
+  const csv = buildFramesCsv();
+
+  downloadCsv(
+    csv,
+    `${sanitizeFileNameBase()}_einzelbilder.csv`
+  );
+});
+
+
+exportSummaryBtn.addEventListener("click", () => {
+
+  const csv = buildSummaryCsv();
+
+  downloadCsv(
+    csv,
+    `${sanitizeFileNameBase()}_zusammenfassung.csv`
+  );
+});
 
 
 /*
