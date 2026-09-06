@@ -717,7 +717,7 @@ const SEEK_TIMEOUT_MS = 3000;
   Fortschritt der Videoposition, bevor die Analyse
   als "am Ende angekommen" gewertet wird.
 */
-const STUCK_SAMPLES_LIMIT = 15;
+const STUCK_SAMPLES_LIMIT = 5;
 
 
 /*
@@ -747,7 +747,7 @@ const BLANK_DIFF_THRESHOLD = 2;
 // Anzahl aufeinanderfolgender "leerer" Frames, bevor die
 // Analyse abgebrochen und der betroffene Bereich verworfen
 // wird.
-const BLANK_STREAK_LIMIT = 5;
+const BLANK_STREAK_LIMIT = 50;
 
 
 /*
