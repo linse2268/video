@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>Neue Videoanalyse</title>
+  <title>Videoanalyse</title>
   <link rel="icon" type="image/city" href="/images/city.png">
 
   <style>
@@ -557,10 +557,21 @@
 
 <div class="app">
 
-  <h1>Neue Videoanalyse</h1>
+  <h1>Videoanalyse</h1>
   <div class="subtitle">
     Farbkontrast · Bewegung · Schnitte
   </div>
+
+  
+
+  <label class="upload">
+    <strong>Video auswählen</strong>
+    <br>
+    <span style="color:#888">
+      Das Video bleibt auf deinem Gerät.
+    </span>
+    <input id="fileInput" type="file" accept="video/*">
+  </label>
 
   <div class="field">
     <label class="field-label" for="seriesNameInput">
@@ -573,15 +584,6 @@
       autocomplete="off"
     >
   </div>
-
-  <label class="upload">
-    <strong>Video auswählen</strong>
-    <br>
-    <span style="color:#888">
-      Das Video bleibt auf deinem Gerät.
-    </span>
-    <input id="fileInput" type="file" accept="video/*">
-  </label>
 
   <video id="video" playsinline controls preload="metadata"></video>
 
